@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { createListing, getListing, setListingStatus } from "@/lib/listings";
 import { activateSeat, getGrant, revokeGrant, updateLimits } from "@/lib/grants";
-import { canReceivePayments, confirmPlatformReceipt, markProviderPaid } from "@/lib/payments";
+import { canReceivePayments, confirmPlatformReceipt, confirmProviderReceipt, markProviderPaid } from "@/lib/payments";
 import { payoutMethodsSchema, setPayoutMethods } from "@/lib/users";
 import { allowedUpstream } from "@/lib/upstream";
 import { SERVICE_POLICIES } from "@/lib/policy";
@@ -28,7 +28,7 @@ export async function savePayoutAction(_prev: ActionState, form: FormData): Prom
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   await setPayoutMethods(user.id, parsed.data);
   revalidatePath("/provider");
-  return { ok: true, message: "Payout details saved. Buyers see them only on their own order page." };
+  return { ok: true, message: "Payout details saved. Only Shareference uses them to pay you." };
 }
 
 const ALLOWED_FEATURES = ["chat", "embeddings", "rerank"] as const;
@@ -130,11 +130,24 @@ export async function confirmFeeAction(form: FormData): Promise<void> {
   const admin = await requireAdmin();
   await confirmPlatformReceipt(str(form, "paymentId"), admin);
   revalidatePath("/ops");
+  revalidatePath("/provider");
+  revalidatePath("/dashboard");
+  revalidatePath("/marketplace");
 }
 
 export async function markProviderPaidAction(form: FormData): Promise<void> {
   const admin = await requireAdmin();
   await markProviderPaid(str(form, "paymentId"), admin);
+  revalidatePath("/ops");
+  revalidatePath("/provider");
+}
+
+export async function confirmProviderPaidAction(form: FormData): Promise<void> {
+  const user = await requireUser();
+  await confirmProviderReceipt(str(form, "paymentId"), user.id);
+  revalidatePath("/provider");
+  revalidatePath("/dashboard");
+  revalidatePath("/marketplace");
   revalidatePath("/ops");
 }
 

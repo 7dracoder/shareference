@@ -87,8 +87,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
 CREATE INDEX IF NOT EXISTS usage_grant ON usage_events(grant_id);
 CREATE INDEX IF NOT EXISTS usage_time ON usage_events(created_at);
 
--- Orders. Buyers pay Shareference (Zelle); admins then pay providers their share.
--- and each recipient (or the chain) confirms receipt.
+-- Orders. Buyers pay Shareference (Zelle); admin pays providers; provider confirms → access.
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,
   reference TEXT NOT NULL UNIQUE,
@@ -113,6 +112,7 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS listing_snapshot TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_legs TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS checkout_key TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS delivery_email TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider_paid_at BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS payments_checkout ON payments(buyer_id, checkout_key);
 ALTER TABLE grants ADD COLUMN IF NOT EXISTS delivery_email TEXT;
 

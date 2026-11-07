@@ -13,6 +13,7 @@ import { LimitsForm } from "@/components/limits-form";
 import { ServiceMark } from "@/components/service-mark";
 import {
   assignSeatAction,
+  confirmProviderPaidAction,
   connectComputerAction,
   createListingAction,
   revokeAction,
@@ -44,7 +45,7 @@ export default async function ProviderPage() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Share access</h1>
         <p className="mt-3 max-w-2xl text-mid">
-          List API credit, a team seat, or your own computer. Buyers pay Shareference; after their access is live, Shareference sends you {providerPercent()}% of the order.
+          List API credit, a team seat, or your own computer. Buyers pay Shareference; Shareference sends you {providerPercent()}% of the order. Confirm you got paid to unlock their access.
           They see you as <span className="font-medium text-hi">{user.alias}</span>.
         </p>
       </div>
@@ -76,14 +77,19 @@ export default async function ProviderPage() {
 
       {awaitingPayout.length > 0 && (
         <section className="card">
-          <h2 className="text-lg font-semibold">Payouts on the way</h2>
-          <p className="mt-1 text-sm text-mid">These sales are live for the buyer. Shareference will send your share to the payout details above.</p>
+          <h2 className="text-lg font-semibold">Confirm you got paid</h2>
+          <p className="mt-1 text-sm text-mid">
+            Shareference sent your share. Tap below once it arrives — that unlocks the buyer&apos;s access in My access.
+          </p>
           <ul className="mt-3 divide-y divide-line">
             {awaitingPayout.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <span className="font-mono">{p.reference}</span>
                 <span className="font-medium">{formatCents(p.providerCents)}</span>
-                <span className="text-low">Pending</span>
+                <form action={confirmProviderPaidAction}>
+                  <input type="hidden" name="paymentId" value={p.id} />
+                  <button className="btn" type="submit">I received the payment</button>
+                </form>
               </li>
             ))}
           </ul>

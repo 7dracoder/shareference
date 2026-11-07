@@ -11,7 +11,7 @@ export default function GuidePage() {
         <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-mid">
           <li>Open a listing and check the models, price and limits. Credit lasts 30 days from activation. Computer time is sold by the hour.</li>
           <li>Sign in and place an order. You&apos;ll get a Zelle QR for the full amount and a short reference to put in the memo.</li>
-          <li>Scan, pay, then tap &quot;I&apos;ve paid.&quot; Access unlocks after Shareference confirms the deposit.</li>
+          <li>Scan, pay, then tap &quot;I&apos;ve paid.&quot; Access unlocks after the provider confirms they received their payout.</li>
           <li>Open My access to copy your key or try it in the playground. It works with any app that uses the OpenAI API.</li>
         </ol>
         <p className="text-sm text-mid">

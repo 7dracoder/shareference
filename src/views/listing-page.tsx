@@ -126,7 +126,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               </label>
               <p className="text-xs text-mid">
                 {(listing.kind === "pool" || listing.kind === "api_key") && "Credit expires 30 days after activation. "}
-                You&apos;ll get a Zelle QR for the full amount. Access unlocks after Shareference confirms the deposit.
+                You&apos;ll get a Zelle QR for the full amount. Access unlocks after the provider confirms they got paid.
               </p>
             </CheckoutForm>
           </div>

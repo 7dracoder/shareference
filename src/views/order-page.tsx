@@ -92,8 +92,10 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                   <input type="hidden" name="paymentId" value={payment.id} />
                   <button className="btn" type="submit">I&apos;ve paid</button>
                 </form>
+              ) : payment.feeConfirmedAt ? (
+                <p className="text-sm text-mid">Deposit confirmed. Access unlocks once the provider confirms they received their payout. This page updates on its own.</p>
               ) : (
-                <p className="text-sm text-mid">Marked as paid. Access unlocks after Shareference confirms the deposit. This page updates on its own.</p>
+                <p className="text-sm text-mid">Marked as paid. Waiting for Shareference to confirm the deposit. This page updates on its own.</p>
               )}
               {payment.status === "awaiting_payment" && (
                 <form action={cancelOrderAction}>

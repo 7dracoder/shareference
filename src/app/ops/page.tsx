@@ -65,7 +65,7 @@ export default async function OpsPage() {
 
       <section className="card">
         <h2 className="text-lg font-semibold">1 · Buyer deposits</h2>
-        <p className="mt-1 text-sm text-mid">Confirm when the full Zelle amount lands in the platform account. That unlocks the buyer&apos;s access.</p>
+        <p className="mt-1 text-sm text-mid">Confirm when the full Zelle amount lands in the platform account. Then pay the provider — access unlocks only after they confirm receipt.</p>
         {pendingDeposits.length === 0 ? (
           <p className="mt-3 text-sm text-mid">Nothing waiting.{revenue.demoOrders > 0 && ` (${revenue.demoOrders} demo orders so far.)`}</p>
         ) : (
@@ -89,7 +89,7 @@ export default async function OpsPage() {
       <section className="card">
         <h2 className="text-lg font-semibold">2 · Pay providers</h2>
         <p className="mt-1 text-sm text-mid">
-          Send each provider their share from the platform account, then mark it paid.
+          Send each provider their share from the platform account, then mark it paid. They confirm on Share to unlock the buyer.
           {revenue.unpaidProviders > 0 && ` ${revenue.unpaidProviders} waiting.`}
         </p>
         {unpaid.length === 0 ? (

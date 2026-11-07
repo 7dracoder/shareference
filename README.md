@@ -35,15 +35,15 @@ Requests run on your machine, so you can see buyers' prompts. The listing page w
 1. Pick a listing and choose how much credit (or hours) to buy.
 2. Sign up with your email and name. You land back on the listing.
 3. The order page shows a Zelle QR for the full amount and a reference for the memo.
-4. After Shareference confirms the deposit, your key appears in **My access**.
+4. After the provider confirms they got paid, your key appears in **My access**.
 5. See remaining credit and usage at any time. End access whenever you want.
 
 **For providers**
 
 1. On **Share**, add where Shareference should send your earnings (buyers never see this).
 2. Create a listing: pick the service (logo + name), paste your API key, set models/price/limits — or connect a computer.
-3. When a buyer pays Shareference, their access goes live. Your payout shows as "on the way" until the platform sends it.
-4. See each buyer's usage (never their prompts), tighten limits, or revoke instantly.
+3. When Shareference sends your share, tap **I received the payment** — that unlocks the buyer's access.
+4. See each buyer's usage (never their prompts), tighten limits, or revoke instantly. Seat and computer listings pause while in use; API credit can stay listed for more buyers.
 
 **For the platform owner (admin)**
 
@@ -54,8 +54,9 @@ Sign in with the email in `ADMIN_EMAIL` to open **Admin** (`/ops`): confirm buye
 Buyers pay **Shareference once**, with Zelle.
 
 1. The order page shows a **Zelle QR** for the full amount, plus a short reference to put in the memo. Buyers never see the provider's payout handle.
-2. An admin confirms the deposit in **Admin** → access is issued.
-3. The admin then pays the provider their share (default 90%; set with `PLATFORM_FEE_BPS`) from the platform account, using the provider's saved payout details, and marks it paid.
+2. An admin confirms the deposit in **Admin**.
+3. The admin pays the provider their share (default 90%; set with `PLATFORM_FEE_BPS`) from the platform account and marks it paid.
+4. The provider confirms receipt on **Share** → buyer access is issued in **My access**.
 
 Set `PLATFORM_ZELLE` (and optionally `PLATFORM_ZELLE_NAME`). The order page shows the bundled Zelle QR at `/zelle-qr.png` (override with `PLATFORM_ZELLE_QR_URL` if needed). Provider payout methods are only visible to admins.
 

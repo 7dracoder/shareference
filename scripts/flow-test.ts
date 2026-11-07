@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createUser, setPayoutMethods } from "../src/lib/users";
 import { createListing, getListing } from "../src/lib/listings";
-import { createOrder, markSent, confirmPlatformReceipt, markProviderPaid, getPayment, paymentLegs } from "../src/lib/payments";
+import { createOrder, markSent, confirmPlatformReceipt, confirmProviderReceipt, markProviderPaid, getPayment, paymentLegs } from "../src/lib/payments";
 
 (async () => {
   const tag = randomUUID().slice(0, 8);
@@ -23,9 +23,12 @@ import { createOrder, markSent, confirmPlatformReceipt, markProviderPaid, getPay
   console.log("buyer_legs_ok", !leaked, "status", p?.status);
   await markSent(p!.id, buyer.id);
   await confirmPlatformReceipt(p!.id, admin);
+  console.log("after_deposit", (await getPayment(p!.id))?.status, "grant", Boolean((await getPayment(p!.id))?.grantId));
+  await markProviderPaid(p!.id, admin);
+  console.log("after_admin_paid", Boolean((await getPayment(p!.id))?.providerPaidAt));
+  await confirmProviderReceipt(p!.id, provider.id);
   const after = await getPayment(p!.id);
   console.log("access_issued", after?.status === "completed" && Boolean(after.grantId));
-  await markProviderPaid(p!.id, admin);
-  console.log("provider_paid", Boolean((await getPayment(p!.id))?.providerConfirmedAt));
+  console.log("provider_confirmed", Boolean(after?.providerConfirmedAt));
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
