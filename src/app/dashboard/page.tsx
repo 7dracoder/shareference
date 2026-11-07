@@ -32,9 +32,12 @@ function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
   );
 }
 
-function GrantCard({ grant }: { grant: Grant }) {
-  const listing = getListing(grant.listingId);
-  const usage = usageSummary(grant.id);
+async function GrantCard({ grant }: { grant: Grant }) {
+  const [listing, usage, providerAlias] = await Promise.all([
+    getListing(grant.listingId),
+    usageSummary(grant.id),
+    aliasOf(grant.providerId),
+  ]);
   const isPool = listing?.kind === "pool";
   const isSeat = listing?.kind === "seat";
   return (
@@ -42,7 +45,7 @@ function GrantCard({ grant }: { grant: Grant }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-medium">{listing?.title ?? "Listing removed"}</h2>
-          <p className="font-mono text-xs text-low">from {aliasOf(grant.providerId)}</p>
+          <p className="font-mono text-xs text-low">from {providerAlias}</p>
         </div>
         <span className={`font-mono text-xs uppercase ${STATUS_STYLE[grant.status]}`}>{grant.status.replace("_", " ")}</span>
       </div>
@@ -66,9 +69,9 @@ function GrantCard({ grant }: { grant: Grant }) {
           <details>
             <summary className="cursor-pointer text-sm text-mid hover:text-hi">How to call it</summary>
             <pre className="code mt-2">{`from openai import OpenAI
-client = OpenAI(base_url="${env.APP_URL}/api/v1", api_key="sb_...")
+client = OpenAI(base_url="${env.APP_URL}/api/v1", api_key="shr_...")
 client.chat.completions.create(
-    model="${isPool ? "switchboard-private" : (grant.models[0] ?? "model-id")}",
+    model="${isPool ? "shareference-private" : (grant.models[0] ?? "model-id")}",
     messages=[{"role": "user", "content": "hello"}],
 )`}</pre>
           </details>
@@ -102,8 +105,8 @@ client.chat.completions.create(
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const grants = grantsForBuyer(user.id);
-  const openOrders = paymentsForBuyer(user.id).filter((p) => p.status === "awaiting_payment" || p.status === "buyer_marked_sent");
+  const [grants, payments] = await Promise.all([grantsForBuyer(user.id), paymentsForBuyer(user.id)]);
+  const openOrders = payments.filter((p) => p.status === "awaiting_payment" || p.status === "buyer_marked_sent");
 
   return (
     <div className="space-y-8">

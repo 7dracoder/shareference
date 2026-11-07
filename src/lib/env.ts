@@ -14,6 +14,7 @@ const schema = z.object({
   SESSION_SECRET: optional,
   VAULT_KEY: optional,
   DATA_DIR: optional,
+  DATABASE_URL: optional,
   ADMIN_EMAIL: optional,
   PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(5000).default(1000),
   DEMO_MODE: z
@@ -53,7 +54,11 @@ const schema = z.object({
 export type Env = z.infer<typeof schema>;
 
 function load(): Env {
-  const parsed = schema.safeParse(process.env);
+  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  const parsed = schema.safeParse({
+    ...process.env,
+    APP_URL: process.env.APP_URL || (vercelUrl ? `https://${vercelUrl}` : undefined),
+  });
   if (!parsed.success) {
     throw new Error(`Invalid environment: ${parsed.error.message}`);
   }

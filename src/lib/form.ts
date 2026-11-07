@@ -28,16 +28,4 @@ export function list(form: FormData, key: string): string[] {
     .filter(Boolean);
 }
 
-const attempts = new Map<string, number[]>();
-
-/** Small in-memory limiter for auth endpoints (per key, sliding window). */
-export function allow(key: string, max: number, windowMs: number): boolean {
-  const t = Date.now();
-  const recent = (attempts.get(key) ?? []).filter((ts) => t - ts < windowMs);
-  if (recent.length >= max) {
-    attempts.set(key, recent);
-    return false;
-  }
-  attempts.set(key, [...recent, t]);
-  return true;
-}
+export { hit as allow } from "./rate-limit";

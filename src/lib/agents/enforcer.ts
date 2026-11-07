@@ -1,20 +1,9 @@
 import "server-only";
+import { hit } from "../rate-limit";
 import type { Grant } from "../grants";
 import type { Feature } from "../listings";
 
 const WINDOW_MS = 60_000;
-const recentCalls = new Map<string, number[]>();
-
-function withinRateLimit(grantId: string, maxRpm: number): boolean {
-  const t = Date.now();
-  const kept = (recentCalls.get(grantId) ?? []).filter((ts) => t - ts < WINDOW_MS);
-  if (kept.length >= maxRpm) {
-    recentCalls.set(grantId, kept);
-    return false;
-  }
-  recentCalls.set(grantId, [...kept, t]);
-  return true;
-}
 
 export interface Denial {
   status: number;
@@ -32,7 +21,7 @@ export interface EnforceInput {
  * Enforcer agent: checks every call against the owner's limits.
  * Returns null when allowed, or a denial the API returns as an OpenAI-style error.
  */
-export function enforce(grant: Grant, input: EnforceInput): Denial | null {
+export async function enforce(grant: Grant, input: EnforceInput): Promise<Denial | null> {
   if (grant.status === "revoked") return { status: 403, code: "grant_revoked", message: "This key was revoked by its owner." };
   if (grant.status === "exhausted") return { status: 402, code: "budget_exhausted", message: "Budget used up. Buy more credit to continue." };
   if (grant.status === "pending_assignment") return { status: 403, code: "not_active", message: "This grant is not active yet." };
@@ -56,7 +45,7 @@ export function enforce(grant: Grant, input: EnforceInput): Denial | null {
   if (grant.spentMicros >= grant.budgetMicros) {
     return { status: 402, code: "budget_exhausted", message: "Budget used up. Buy more credit to continue." };
   }
-  if (!withinRateLimit(grant.id, grant.maxRpm)) {
+  if (!(await hit(`grant:${grant.id}`, grant.maxRpm, WINDOW_MS))) {
     return { status: 429, code: "rate_limited", message: `Rate limit of ${grant.maxRpm} requests/minute reached.` };
   }
   return null;

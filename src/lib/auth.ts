@@ -5,7 +5,7 @@ import { safeEqual, sign } from "./crypto";
 import { env } from "./env";
 import { getUserById, type User } from "./users";
 
-const COOKIE = "sb_session";
+const COOKIE = "shr_session";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function startSession(userId: string): Promise<void> {

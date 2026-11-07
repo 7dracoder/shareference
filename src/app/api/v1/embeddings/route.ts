@@ -13,10 +13,10 @@ const schema = z.object({
 });
 
 export async function POST(req: Request): Promise<Response> {
-  const auth = authorize(req);
+  const auth = await authorize(req);
   if (auth instanceof Response) return auth;
   if (auth.listing.kind !== "pool") {
-    return openAiError(400, "unsupported", "Embeddings are available on the Switchboard pool only.");
+    return openAiError(400, "unsupported", "Embeddings are available on the Shareference pool only.");
   }
 
   let parsed;
@@ -27,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (!parsed.success) return openAiError(400, "invalid_request", parsed.error.issues[0]?.message ?? "Invalid request");
 
-  const blocked = checkOrBlock(auth, ENDPOINT, { feature: "embeddings" });
+  const blocked = await checkOrBlock(auth, ENDPOINT, { feature: "embeddings" });
   if (blocked) return blocked;
   if (!sieEnabled()) return openAiError(503, "backend_unavailable", "Superlinked SIE is not configured.");
 
@@ -36,7 +36,7 @@ export async function POST(req: Request): Promise<Response> {
   const tokens = inputs.reduce((sum, s) => sum + estimateTokens(s), 0);
   try {
     const result = await sieEmbeddings(parsed.data.input, parsed.data.model);
-    recordUsage({
+    await recordUsage({
       grantId: auth.grant.id,
       endpoint: ENDPOINT,
       backend: "superlinked-sie",
@@ -48,7 +48,7 @@ export async function POST(req: Request): Promise<Response> {
       latencyMs: Date.now() - started,
       outcome: "ok",
     });
-    return Response.json(result, { headers: { "x-switchboard-backend": "superlinked-sie" } });
+    return Response.json(result, { headers: { "x-shareference-backend": "superlinked-sie" } });
   } catch (error: unknown) {
     logger.warn("embeddings failed", { error: String(error) });
     return openAiError(502, "upstream_error", "The embeddings backend failed. You were not charged.");

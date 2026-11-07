@@ -27,7 +27,7 @@ export async function signupAction(_prev: ActionState, form: FormData): Promise<
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   let userId: string;
   try {
-    userId = createUser(parsed.data.email, parsed.data.name, parsed.data.password).id;
+    userId = (await createUser(parsed.data.email, parsed.data.name, parsed.data.password)).id;
   } catch (error: unknown) {
     return { error: error instanceof Error ? error.message : "Could not create account" };
   }
@@ -37,7 +37,7 @@ export async function signupAction(_prev: ActionState, form: FormData): Promise<
 
 export async function loginAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   if (!allow(`login:${await clientKey()}`, AUTH_MAX, AUTH_WINDOW_MS)) return { error: "Too many attempts. Try again later." };
-  const user = authenticate(str(form, "email"), str(form, "password"));
+  const user = await authenticate(str(form, "email"), str(form, "password"));
   if (!user) return { error: "Wrong email or password." };
   await startSession(user.id);
   const next = str(form, "next");

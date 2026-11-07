@@ -14,7 +14,7 @@ const MAX_PURCHASE_CENTS = 50_000;
 
 export async function buyAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
-  const listing = getListing(str(form, "listingId"));
+  const listing = await getListing(str(form, "listingId"));
   if (!listing) return { error: "Listing not found." };
   const method = str(form, "method");
   const isMethod = (PAY_METHODS as readonly string[]).includes(method) || method === "demo";
@@ -23,7 +23,7 @@ export async function buyAction(_prev: ActionState, form: FormData): Promise<Act
   if (listing.kind !== "seat" && (cents < listing.minPurchaseCents || cents > MAX_PURCHASE_CENTS)) {
     return { error: `Amount must be between $${(listing.minPurchaseCents / 100).toFixed(2)} and $${MAX_PURCHASE_CENTS / 100}.` };
   }
-  const result = createOrder(listing, user, cents, method as PayMethod | "demo");
+  const result = await createOrder(listing, user, cents, method as PayMethod | "demo");
   if (!result.ok) return { error: result.message };
   redirect(`/orders/${result.paymentId}`);
 }
@@ -31,14 +31,14 @@ export async function buyAction(_prev: ActionState, form: FormData): Promise<Act
 export async function markSentAction(form: FormData): Promise<void> {
   const user = await requireUser();
   const id = str(form, "paymentId");
-  markSent(id, user.id);
+  await markSent(id, user.id);
   revalidatePath(`/orders/${id}`);
 }
 
 export async function cancelOrderAction(form: FormData): Promise<void> {
   const user = await requireUser();
   const id = str(form, "paymentId");
-  cancelOrder(id, user.id);
+  await cancelOrder(id, user.id);
   revalidatePath(`/orders/${id}`);
 }
 
@@ -66,12 +66,12 @@ export async function submitUsdcAction(_prev: ActionState, form: FormData): Prom
 
 export async function revealKeyAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
-  const key = revealKey(str(form, "grantId"), user.id);
+  const key = await revealKey(str(form, "grantId"), user.id);
   return key ? { ok: true, secret: key } : { error: "Key not found." };
 }
 
 export async function buyerRevokeAction(form: FormData): Promise<void> {
   const user = await requireUser();
-  revokeGrant(str(form, "grantId"), user.id);
+  await revokeGrant(str(form, "grantId"), user.id);
   revalidatePath("/dashboard");
 }

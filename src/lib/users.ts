@@ -64,46 +64,61 @@ function randomAlias(): string {
   return `${word}-${crypto.randomBytes(2).toString("hex")}`;
 }
 
-export function getUserById(id: string): User | null {
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
+export async function getUserById(id: string): Promise<User | null> {
+  const row = await db.get<UserRow>("SELECT * FROM users WHERE id = ?", [id]);
   return row ? toUser(row) : null;
 }
 
-export function createUser(email: string, name: string, password: string): User {
+export async function createUser(email: string, name: string, password: string): Promise<User> {
   const normalized = email.trim().toLowerCase();
-  const exists = db.prepare("SELECT 1 FROM users WHERE email = ?").get(normalized);
+  const exists = await db.get("SELECT 1 FROM users WHERE email = ?", [normalized]);
   if (exists) throw new Error("An account with this email already exists");
   const id = newId("usr");
-  db.prepare(
-    `INSERT INTO users (id, email, name, alias, password_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, normalized, name.trim(), randomAlias(), hashPassword(password), now());
-  const user = getUserById(id);
+  await db.run("INSERT INTO users (id, email, name, alias, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)", [
+    id,
+    normalized,
+    name.trim(),
+    randomAlias(),
+    hashPassword(password),
+    now(),
+  ]);
+  const user = await getUserById(id);
   if (!user) throw new Error("Failed to create user");
   return user;
 }
 
-export function authenticate(email: string, password: string): User | null {
-  const row = db
-    .prepare("SELECT * FROM users WHERE email = ?")
-    .get(email.trim().toLowerCase()) as UserRow | undefined;
+export async function authenticate(email: string, password: string): Promise<User | null> {
+  const row = await db.get<UserRow>("SELECT * FROM users WHERE email = ?", [email.trim().toLowerCase()]);
   if (!row || !verifyPassword(password, row.password_hash)) return null;
   return toUser(row);
 }
 
-export function setPayoutMethods(userId: string, methods: PayoutMethods): void {
+export async function setPayoutMethods(userId: string, methods: PayoutMethods): Promise<void> {
   const clean = Object.fromEntries(Object.entries(methods).filter(([, v]) => typeof v === "string" && v.trim() !== ""));
-  db.prepare("UPDATE users SET payout_methods = ? WHERE id = ?").run(JSON.stringify(clean), userId);
+  await db.run("UPDATE users SET payout_methods = ? WHERE id = ?", [JSON.stringify(clean), userId]);
 }
 
 export function hasPayoutMethod(methods: PayoutMethods): boolean {
   return Boolean(methods.zelle || methods.venmo || methods.cashapp || methods.paypal || methods.usdc);
 }
 
-export function aliasOf(userId: string | null): string {
+export async function aliasOf(userId: string | null): Promise<string> {
   if (!userId) return "Switchboard";
-  const row = db.prepare("SELECT alias FROM users WHERE id = ?").get(userId) as
-    | { alias: string }
-    | undefined;
+  const row = await db.get<{ alias: string }>("SELECT alias FROM users WHERE id = ?", [userId]);
   return row?.alias ?? "unknown";
+}
+
+/** Batch alias lookup for lists, so pages don't issue one query per row. */
+export async function aliasMap(ids: Array<string | null>): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((v): v is string => Boolean(v)))];
+  const map = new Map<string, string>();
+  if (unique.length === 0) return map;
+  const placeholders = unique.map(() => "?").join(",");
+  const rows = await db.all<{ id: string; alias: string }>(`SELECT id, alias FROM users WHERE id IN (${placeholders})`, unique);
+  rows.forEach((r) => map.set(r.id, r.alias));
+  return map;
+}
+
+export function aliasFrom(map: Map<string, string>, id: string | null): string {
+  return id ? (map.get(id) ?? "unknown") : "Switchboard";
 }

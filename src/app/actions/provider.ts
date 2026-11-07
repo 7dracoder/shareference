@@ -10,6 +10,14 @@ import { hasPayoutMethod, payoutMethodsSchema, setPayoutMethods } from "@/lib/us
 import { TIERS, type Tier } from "@/lib/pricing";
 import { list, num, str, type ActionState } from "@/lib/form";
 
+/** Blocks SSRF via provider-supplied upstream URLs: only public DNS hostnames are allowed. */
+function isPublicHost(url: string): boolean {
+  const host = new URL(url).hostname.toLowerCase();
+  const isIpLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":") || host.startsWith("[");
+  const isInternal = host === "localhost" || /\.(local|internal|localhost|lan|home|corp)$/.test(host) || !host.includes(".");
+  return !isIpLiteral && !isInternal;
+}
+
 export async function savePayoutAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
   const raw = {
@@ -22,7 +30,7 @@ export async function savePayoutAction(_prev: ActionState, form: FormData): Prom
   };
   const parsed = payoutMethodsSchema.safeParse(raw);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
-  setPayoutMethods(user.id, parsed.data);
+  await setPayoutMethods(user.id, parsed.data);
   revalidatePath("/provider");
   return { ok: true, message: "Payout details saved. Buyers see them only on their own order page." };
 }
@@ -71,7 +79,11 @@ export async function createListingAction(_prev: ActionState, form: FormData): P
   if (d.kind === "api_key" && d.features.length === 0) return { error: "Grant at least one feature." };
   if (d.kind === "seat" && (d.seatPriceUsd < 1 || d.seatMinutes < 15)) return { error: "Seats need a price of at least $1 and at least 15 minutes." };
 
-  const result = createListing(user.id, {
+  if (d.upstreamBaseUrl && !isPublicHost(d.upstreamBaseUrl)) {
+    return { error: "Upstream must be a public hostname (no IP addresses, localhost or internal hosts)." };
+  }
+
+  const result = await createListing(user.id, {
     kind: d.kind,
     service: d.service,
     title: d.title,
@@ -95,34 +107,34 @@ export async function createListingAction(_prev: ActionState, form: FormData): P
 export async function toggleListingAction(form: FormData): Promise<void> {
   const user = await requireUser();
   const status = str(form, "status") === "paused" ? "paused" : "active";
-  setListingStatus(str(form, "listingId"), user.id, status);
+  await setListingStatus(str(form, "listingId"), user.id, status);
   revalidatePath("/provider");
   revalidatePath("/marketplace");
 }
 
 export async function confirmReceiptAction(form: FormData): Promise<void> {
   const user = await requireUser();
-  confirmProviderReceipt(str(form, "paymentId"), user.id);
+  await confirmProviderReceipt(str(form, "paymentId"), user.id);
   revalidatePath("/provider");
 }
 
 export async function confirmFeeAction(form: FormData): Promise<void> {
   const admin = await requireAdmin();
-  confirmPlatformReceipt(str(form, "paymentId"), admin);
+  await confirmPlatformReceipt(str(form, "paymentId"), admin);
   revalidatePath("/ops");
 }
 
 export async function assignSeatAction(form: FormData): Promise<void> {
   const user = await requireUser();
-  const grant = getGrant(str(form, "grantId"));
-  const listing = grant ? getListing(grant.listingId) : null;
-  if (grant && listing && listing.providerId === user.id) activateSeat(grant.id, user.id, listing.seatMinutes);
+  const grant = await getGrant(str(form, "grantId"));
+  const listing = grant ? await getListing(grant.listingId) : null;
+  if (grant && listing && listing.providerId === user.id) await activateSeat(grant.id, user.id, listing.seatMinutes);
   revalidatePath("/provider");
 }
 
 export async function revokeAction(form: FormData): Promise<void> {
   const user = await requireUser();
-  revokeGrant(str(form, "grantId"), user.id);
+  await revokeGrant(str(form, "grantId"), user.id);
   revalidatePath("/provider");
   revalidatePath("/dashboard");
 }
@@ -144,7 +156,7 @@ export async function updateLimitsAction(_prev: ActionState, form: FormData): Pr
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const d = parsed.data;
-  const ok = updateLimits(str(form, "grantId"), user.id, {
+  const ok = await updateLimits(str(form, "grantId"), user.id, {
     maxRpm: d.maxRpm,
     maxTokensPerRequest: d.maxTokensPerRequest,
     privacyFloor: d.privacyFloor,

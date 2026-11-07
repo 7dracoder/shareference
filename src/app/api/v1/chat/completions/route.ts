@@ -1,15 +1,16 @@
+import { after } from "next/server";
 import { authorize, checkOrBlock, openAiError, readJson } from "@/lib/api";
 import { parseTier, routeChat } from "@/lib/agents/router";
-import { chatRequestSchema } from "@/lib/integrations/openai-compat";
-import { BackendError } from "@/lib/integrations/openai-compat";
+import { BackendError, chatRequestSchema } from "@/lib/integrations/openai-compat";
 import { recordUsage } from "@/lib/grants";
 import { costMicros } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 
 const ENDPOINT = "chat.completions";
+export const maxDuration = 120;
 
 export async function POST(req: Request): Promise<Response> {
-  const auth = authorize(req);
+  const auth = await authorize(req);
   if (auth instanceof Response) return auth;
 
   let body: unknown;
@@ -22,7 +23,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!parsed.success) return openAiError(400, "invalid_request", parsed.error.issues[0]?.message ?? "Invalid request");
   const request = parsed.data;
 
-  const blocked = checkOrBlock(auth, ENDPOINT, {
+  const blocked = await checkOrBlock(auth, ENDPOINT, {
     feature: "chat",
     model: auth.listing.kind === "api_key" ? request.model : undefined,
     requestedTokens: request.max_tokens ?? request.max_completion_tokens,
@@ -33,13 +34,16 @@ export async function POST(req: Request): Promise<Response> {
   const capped = { ...request, max_tokens: Math.min(request.max_tokens ?? auth.grant.maxTokensPerRequest, auth.grant.maxTokensPerRequest) };
   const started = Date.now();
   try {
-    // Pool callers pick a tier with the x-switchboard-tier header or model "switchboard-<tier>".
+    // Pool callers pick a tier with the x-shareference-tier header or model "shareference-<tier>".
     const tierHint =
-      parseTier(req.headers.get("x-switchboard-tier")) ?? parseTier(request.model?.replace(/^switchboard-/, "") ?? null);
+      parseTier(req.headers.get("x-shareference-tier")) ?? parseTier(request.model?.replace(/^shareference-/, "") ?? null);
     const routed = await routeChat(auth.grant, auth.listing, capped, tierHint);
-    routed.usage
-      .then((usage) =>
-        recordUsage({
+
+    // Meter once the (possibly streamed) response has fully finished.
+    after(async () => {
+      try {
+        const usage = await routed.usage;
+        await recordUsage({
           grantId: auth.grant.id,
           endpoint: ENDPOINT,
           backend: routed.backend,
@@ -51,18 +55,20 @@ export async function POST(req: Request): Promise<Response> {
           latencyMs: Date.now() - started,
           outcome: "ok",
           reason: routed.upgradedForPii ? "pii_upgrade" : undefined,
-        }),
-      )
-      .catch((error: unknown) => logger.error("usage metering failed", { error: String(error), grant: auth.grant.id }));
+        });
+      } catch (error: unknown) {
+        logger.error("usage metering failed", { error: String(error), grant: auth.grant.id });
+      }
+    });
 
     const headers = new Headers(routed.response.headers);
-    headers.set("x-switchboard-backend", routed.backend);
-    headers.set("x-switchboard-tier", routed.tier);
+    headers.set("x-shareference-backend", routed.backend);
+    headers.set("x-shareference-tier", routed.tier);
     return new Response(routed.response.body, { status: routed.response.status, headers });
   } catch (error: unknown) {
     const status = error instanceof BackendError ? error.status : 502;
     logger.warn("chat routing failed", { grant: auth.grant.id, status, error: String(error) });
-    recordUsage({
+    await recordUsage({
       grantId: auth.grant.id,
       endpoint: ENDPOINT,
       backend: "none",

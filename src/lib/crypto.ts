@@ -74,8 +74,8 @@ export interface IssuedKey {
 }
 
 export function issueApiKey(): IssuedKey {
-  const key = `sb_${crypto.randomBytes(24).toString("base64url")}`;
-  return { key, hash: hashToken(key), prefix: key.slice(0, 9) };
+  const key = `shr_${crypto.randomBytes(24).toString("base64url")}`;
+  return { key, hash: hashToken(key), prefix: key.slice(0, 10) };
 }
 
 export function sign(value: string): string {

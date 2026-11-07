@@ -10,8 +10,8 @@ function priceLine(l: Listing): string {
 
 const KIND_LABEL: Record<Listing["kind"], string> = { pool: "Inference pool", api_key: "Shared API", seat: "Team seat" };
 
-export default function MarketplacePage() {
-  const listings = activeListings();
+export default async function MarketplacePage() {
+  const listings = await activeListings();
   return (
     <div>
       <p className="kicker">Marketplace</p>

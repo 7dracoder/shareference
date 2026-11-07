@@ -42,7 +42,7 @@ export function parseTier(value: string | null): Tier | null {
 
 /** Shared-account listings: forward to the provider's own upstream with their sealed key. */
 async function routeShared(listing: Listing, request: ChatRequest): Promise<RoutedResult> {
-  const sealed = getListingCredential(listing.id);
+  const sealed = await getListingCredential(listing.id);
   if (!sealed || !listing.upstreamBaseUrl) throw new BackendError("Listing has no credential", 503, false);
   const model = request.model ?? listing.models[0];
   if (!model) throw new BackendError("Specify a model", 400, false);
@@ -70,7 +70,7 @@ async function routePool(grant: Grant, request: ChatRequest, requested: Tier | n
     if (scan.found) {
       tier = "verified";
       upgradedForPii = true;
-      agentLog("router", "upgraded to verified", `Personal data detected (${scan.labels.join(", ")}); routed to Tinfoil enclave.`);
+      await agentLog("router", "upgraded to verified", `Personal data detected (${scan.labels.join(", ")}); routed to Tinfoil enclave.`);
     }
   }
 
@@ -81,7 +81,7 @@ async function routePool(grant: Grant, request: ChatRequest, requested: Tier | n
     if (!backend.enabled()) continue;
     try {
       const result = await backend.call(request);
-      if (candidate !== tier) agentLog("router", "fell back upward", `${BACKENDS[tier].name} unavailable; served by ${backend.name}.`);
+      if (candidate !== tier) await agentLog("router", "fell back upward", `${BACKENDS[tier].name} unavailable; served by ${backend.name}.`);
       return { ...result, backend: backend.name, tier: candidate, pricePer1kMicros: TIER_INFO[candidate].pricePer1kMicros, upgradedForPii };
     } catch (error: unknown) {
       lastError = error instanceof BackendError ? error : new BackendError(String(error), 502, true);
