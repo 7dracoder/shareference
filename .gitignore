@@ -1,0 +1,28 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+/build
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+
+# env files (keep the example)
+.env*
+!.env.example
+
+# local data
+/data
+*.db
+*.db-wal
+*.db-shm
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
