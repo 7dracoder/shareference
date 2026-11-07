@@ -8,6 +8,7 @@ import { activateSeat, getGrant, revokeGrant, updateLimits } from "@/lib/grants"
 import { canReceivePayments, confirmPlatformReceipt, confirmProviderReceipt } from "@/lib/payments";
 import { payoutMethodsSchema, setPayoutMethods } from "@/lib/users";
 import { allowedUpstream } from "@/lib/upstream";
+import { SERVICE_POLICIES } from "@/lib/policy";
 import { TIERS, type Tier } from "@/lib/pricing";
 import { list, num, str, type ActionState } from "@/lib/form";
 
@@ -52,9 +53,11 @@ export async function createListingAction(_prev: ActionState, form: FormData): P
   if (!canReceivePayments(user.payoutMethods)) return { error: "Add a payout method buyers can use first, so they can pay you directly." };
   if (str(form, "authorizedSharing") !== "on") return { error: "Confirm you are authorized to provide this access." };
   const kind = str(form, "kind");
+  const service = str(form, "service");
+  const fixedBaseUrl = SERVICE_POLICIES.find((p) => p.id === service)?.baseUrl;
   const parsed = listingSchema.safeParse({
     kind,
-    service: str(form, "service"),
+    service,
     title: str(form, "title"),
     description: str(form, "description"),
     features: kind === "seat" ? [] : list(form, "features"),
@@ -65,7 +68,7 @@ export async function createListingAction(_prev: ActionState, form: FormData): P
     minPurchaseUsd: num(form, "minPurchaseUsd", 5),
     maxRpm: Math.round(num(form, "maxRpm", 60)),
     maxTokensPerRequest: Math.round(num(form, "maxTokensPerRequest", 4000)),
-    upstreamBaseUrl: kind === "api_key" ? str(form, "upstreamBaseUrl") || null : null,
+    upstreamBaseUrl: kind === "api_key" ? fixedBaseUrl ?? (str(form, "upstreamBaseUrl") || null) : null,
     credential: kind === "api_key" ? str(form, "credential") || null : null,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };

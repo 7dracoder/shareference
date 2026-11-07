@@ -10,11 +10,13 @@ Live: [shareference-app.vercel.app](https://shareference-app.vercel.app)
 
 | Kind | Examples | What the buyer gets |
 |---|---|---|
-| **API key / credits** | Any OpenAI-compatible API (OpenAI, Groq, Together, DeepInfra, OpenRouter), Darkbloom credits, Tinfoil | A Shareference key (`shr_...`) that forwards to the provider's account, with a budget, rate limit, token cap, model list and expiry |
-| **Team seat** | Canva Teams, Figma, Notion team plans | Time-boxed seat. The provider adds and removes the buyer in that service's admin console; Shareference tracks the time |
+| **API key / credits** | Claude (Anthropic API), OpenAI, Google Gemini, Baseten, OpenRouter, Groq, Together, Fireworks, DeepInfra, Mistral, xAI, DeepSeek, Cerebras, Perplexity, Cohere, Hugging Face, Nebius, SambaNova, Novita, Darkbloom, Tinfoil, or any other OpenAI-compatible API | A Shareference key (`shr_...`) that forwards to the provider's account, with a budget, rate limit, token cap, model list and expiry. Providers just pick the service and paste their key |
+| **Team seat** | Claude Team, ChatGPT Business, Cursor Teams, GitHub Copilot Business, Canva, Figma, Notion, or any other team plan | Time-boxed seat. The provider adds and removes the buyer in that service's admin console; Shareference tracks the time |
 | **Inference pool** (by Shareference) | Superlinked SIE, Darkbloom, Tinfoil | One key routed by cost and privacy (see below) |
 
-Sharing a personal login is never allowed. Providers must confirm they're allowed to share under the service's terms.
+**Personal subscriptions (Claude Pro/Max, ChatGPT Plus, and similar) can't be shared.** They have no API key, so sharing one means handing over your login, which those services forbid and can ban accounts for. Share API credit or a team-plan seat instead. Providers must also confirm they're allowed to share under each service's terms.
+
+The supported list lives in `src/lib/policy.ts`. Adding a service is one line with its OpenAI-compatible address.
 
 ### Can I share my own PC or GPU?
 

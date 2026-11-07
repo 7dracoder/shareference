@@ -7,6 +7,7 @@ import { meterSseStream } from "../src/lib/integrations/openai-compat";
 test("upstream URLs reject credentials, redirects' alternate hosts, IPs, and private hosts", () => {
   for (const value of ["http://api.openai.com/v1", "https://127.0.0.1", "https://[::1]", "https://api.openai.com.attacker.test", "https://localhost", "https://user:password@api.openai.com/v1", "https://api.openai.com:8443/v1", "https://api.openai.com/v1?key=secret"]) assert.equal(allowedUpstream(value), false, value);
   assert.equal(allowedUpstream("https://api.openai.com/v1"), true);
+  for (const value of ["https://api.anthropic.com/v1", "https://inference.baseten.co/v1", "https://generativelanguage.googleapis.com/v1beta/openai"]) assert.equal(allowedUpstream(value), true, value);
 });
 
 test("request-body limits count UTF-8 bytes and stop chunked uploads", async () => {

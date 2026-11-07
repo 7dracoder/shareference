@@ -43,6 +43,7 @@ export function ListingForm({ action, services }: ListingFormProps) {
           </button>
         ))}
       </div>
+      <p className="text-xs text-low">Personal subscriptions like Claude Pro/Max or ChatGPT Plus can&apos;t be shared, since that means sharing your login. Share API credit or a team-plan seat instead.</p>
 
       <label className="block">
         <span className="label">Service</span>
@@ -57,7 +58,7 @@ export function ListingForm({ action, services }: ListingFormProps) {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block sm:col-span-2">
           <span className="label">Title</span>
-          <input className="input" name="title" required maxLength={100} placeholder={kind === "seat" ? "Canva Teams seat, 2 hours" : "Llama 70B on my team's credits"} />
+          <input className="input" name="title" required maxLength={100} placeholder={kind === "seat" ? "Claude Team seat, 2 hours" : "Claude on my spare API credit"} />
         </label>
         <label className="block sm:col-span-2">
           <span className="label">What the buyer gets</span>
@@ -67,12 +68,10 @@ export function ListingForm({ action, services }: ListingFormProps) {
 
       {kind === "api_key" ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          {selected?.baseUrl ? (
-            <input type="hidden" name="upstreamBaseUrl" value={selected.baseUrl} />
-          ) : (
+          {!selected?.baseUrl && (
             <label className="block sm:col-span-2">
               <span className="label">Upstream base URL (OpenAI-compatible, https)</span>
-              <input className="input font-mono" name="upstreamBaseUrl" type="url" required placeholder="https://api.openai.com/v1" />
+              <input className="input font-mono" name="upstreamBaseUrl" type="url" required placeholder="https://llm.yourdomain.com/v1" />
             </label>
           )}
           <label className="block sm:col-span-2">

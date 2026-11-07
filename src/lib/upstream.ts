@@ -1,6 +1,7 @@
 import "server-only";
+import { SERVICE_POLICIES } from "./policy";
 
-const DEFAULT_HOSTS = ["api.openai.com", "api.groq.com", "api.together.xyz", "api.deepinfra.com", "openrouter.ai", "api.darkbloom.dev", "inference.tinfoil.sh"];
+const DEFAULT_HOSTS = SERVICE_POLICIES.flatMap((p) => (p.baseUrl ? [new URL(p.baseUrl).hostname] : []));
 
 /** Exact trusted hosts prevent DNS rebinding and private-network proxying. */
 export function allowedUpstream(value: string): boolean {
