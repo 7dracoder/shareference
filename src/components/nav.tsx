@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { currentUser } from "@/lib/auth";
+import { LogoMark } from "@/components/logo";
 
 export async function Nav() {
   const user = await currentUser();
   return <header className="sticky top-0 z-20 border-b border-line bg-ink/95 backdrop-blur">
     <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-4">
-      <Link href="/" className="text-lg font-semibold tracking-tight">share<span className="text-acid">ference</span><span className="text-acid" aria-hidden> ·</span></Link>
+      <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight"><LogoMark size={28} /><span>share<span className="text-acid">ference</span></span></Link>
       <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-mid">
         <Link href="/marketplace" className="hover:text-hi">Get access</Link>
         <Link href="/provider" className="hover:text-hi">Provide access</Link>
