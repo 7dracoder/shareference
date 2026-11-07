@@ -12,7 +12,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="card">
       <p className="label">{label}</p>
-      <p className="mt-2 font-mono text-3xl">{value}</p>
+      <p className="mt-2 text-3xl font-semibold">{value}</p>
     </div>
   );
 }
@@ -40,8 +40,7 @@ export default async function OpsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="kicker">Ops · agentic organization</p>
-        <h1 className="mt-3 font-mono text-3xl">Live revenue and agent activity</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Admin</h1>
         {env.DEMO_MODE && <p className="mt-2 text-sm text-warn">DEMO_MODE is on. Demo orders are excluded from revenue below.</p>}
       </div>
 
@@ -53,7 +52,7 @@ export default async function OpsPage() {
       </div>
 
       <section className="card">
-        <h2 className="kicker">Confirm money that reached your bank</h2>
+        <h2 className="text-lg font-semibold">Platform fees to confirm</h2>
         {pending.length === 0 ? (
           <p className="mt-3 text-sm text-mid">Nothing waiting.{revenue.demoOrders > 0 && ` (${revenue.demoOrders} demo orders so far.)`}</p>
         ) : (
@@ -63,7 +62,7 @@ export default async function OpsPage() {
                 <span className="font-mono">{p.reference}</span>
                 <span>{aliasFrom(aliases, p.buyerId)}</span>
                 <span>{formatCents(p.feeCents)} via {METHOD_LABEL[p.method as PayMethod]}</span>
-                <span className="text-low">{p.status === "buyer_marked_sent" ? "buyer says sent" : "not sent yet"}</span>
+                <span className="text-low">{p.status === "buyer_marked_sent" ? "Buyer says it's sent" : "Not sent yet"}</span>
                 <form action={confirmFeeAction}>
                   <input type="hidden" name="paymentId" value={p.id} />
                   <button className="btn" type="submit">Received</button>
@@ -76,7 +75,7 @@ export default async function OpsPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card">
-          <h2 className="kicker">Optimizer agent</h2>
+          <h2 className="text-lg font-semibold">Usage notes</h2>
           {insights.length === 0 ? (
             <p className="mt-3 text-sm text-mid">No traffic yet.</p>
           ) : (
@@ -96,8 +95,8 @@ export default async function OpsPage() {
         </section>
 
         <section className="card">
-          <h2 className="kicker">Integrations</h2>
-          <ul className="mt-3 space-y-2 font-mono text-sm">
+          <h2 className="text-lg font-semibold">Integrations</h2>
+          <ul className="mt-3 space-y-2 text-sm">
             {Object.entries(integrations).map(([name, on]) => (
               <li key={name} className="flex justify-between">
                 <span>{name}</span>
@@ -109,12 +108,12 @@ export default async function OpsPage() {
       </div>
 
       <section className="card">
-        <h2 className="kicker">Agent activity</h2>
+        <h2 className="text-lg font-semibold">Activity log</h2>
         <ul className="mt-3 divide-y divide-line">
           {events.map((e) => (
             <li key={e.id} className="grid gap-1 py-2 text-sm sm:grid-cols-[160px_120px_1fr]">
               <span className="font-mono text-xs text-low">{new Date(e.createdAt).toLocaleTimeString()}</span>
-              <span className="font-mono text-xs text-acid">{e.agent}</span>
+              <span className="text-xs text-mid">{e.agent}</span>
               <span className="text-mid"><span className="text-hi">{e.action}</span> · {e.detail}</span>
             </li>
           ))}

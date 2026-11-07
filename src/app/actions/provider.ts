@@ -11,6 +11,8 @@ import { allowedUpstream } from "@/lib/upstream";
 import { SERVICE_POLICIES } from "@/lib/policy";
 import { TIERS, type Tier } from "@/lib/pricing";
 import { list, num, str, type ActionState } from "@/lib/form";
+import { createNode, nodesForProvider, resetNodeToken } from "@/lib/nodes";
+import { env } from "@/lib/env";
 
 export async function savePayoutAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
@@ -32,7 +34,7 @@ export async function savePayoutAction(_prev: ActionState, form: FormData): Prom
 const ALLOWED_FEATURES = ["chat", "embeddings", "rerank"] as const;
 
 const listingSchema = z.object({
-  kind: z.enum(["api_key", "seat"]),
+  kind: z.enum(["api_key", "seat", "compute"]),
   service: z.string().min(1).max(60),
   title: z.string().min(3, "Title is too short").max(100),
   description: z.string().min(10, "Describe what the buyer gets").max(1000),
@@ -46,6 +48,7 @@ const listingSchema = z.object({
   maxTokensPerRequest: z.number().int().min(16).max(128_000),
   upstreamBaseUrl: z.string().url().startsWith("https://", "Upstream must use https").nullable(),
   credential: z.string().min(8).max(500).nullable(),
+  nodeId: z.string().max(60).nullable(),
 });
 
 export async function createListingAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -55,21 +58,23 @@ export async function createListingAction(_prev: ActionState, form: FormData): P
   const kind = str(form, "kind");
   const service = str(form, "service");
   const fixedBaseUrl = SERVICE_POLICIES.find((p) => p.id === service)?.baseUrl;
+  const compute = kind === "compute";
   const parsed = listingSchema.safeParse({
     kind,
-    service,
+    service: compute ? "own-computer" : service,
     title: str(form, "title"),
     description: str(form, "description"),
-    features: kind === "seat" ? [] : list(form, "features"),
-    models: list(form, "models"),
-    pricePer1kUsd: num(form, "pricePer1kUsd"),
-    seatPriceUsd: num(form, "seatPriceUsd"),
-    seatMinutes: Math.round(num(form, "seatMinutes")),
-    minPurchaseUsd: num(form, "minPurchaseUsd", 5),
+    features: compute ? ["chat"] : kind === "seat" ? [] : list(form, "features"),
+    models: compute ? [] : list(form, "models"),
+    pricePer1kUsd: compute ? 0 : num(form, "pricePer1kUsd"),
+    seatPriceUsd: num(form, compute ? "hourlyPriceUsd" : "seatPriceUsd"),
+    seatMinutes: compute ? 60 : Math.round(num(form, "seatMinutes")),
+    minPurchaseUsd: compute ? Math.max(1, num(form, "hourlyPriceUsd", 1)) : num(form, "minPurchaseUsd", 5),
     maxRpm: Math.round(num(form, "maxRpm", 60)),
     maxTokensPerRequest: Math.round(num(form, "maxTokensPerRequest", 4000)),
     upstreamBaseUrl: kind === "api_key" ? fixedBaseUrl ?? (str(form, "upstreamBaseUrl") || null) : null,
     credential: kind === "api_key" ? str(form, "credential") || null : null,
+    nodeId: compute ? str(form, "nodeId") || null : null,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const d = parsed.data;
@@ -96,10 +101,21 @@ export async function createListingAction(_prev: ActionState, form: FormData): P
     maxTokensPerRequest: d.maxTokensPerRequest,
     upstreamBaseUrl: d.upstreamBaseUrl,
     credential: d.credential,
+    nodeId: d.nodeId ?? undefined,
   });
   revalidatePath("/provider");
   revalidatePath("/marketplace");
   return result.ok ? { ok: true, message: result.message } : { error: result.message };
+}
+
+export async function connectComputerAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  const unused = (await nodesForProvider(user.id)).find((n) => n.lastSeen === null);
+  const nodeId = str(form, "nodeId") || unused?.id;
+  const token = nodeId ? await resetNodeToken(nodeId, user.id) : await createNode(user.id);
+  if (!token) return { error: "That computer isn't yours." };
+  revalidatePath("/provider");
+  return { ok: true, secret: `curl -fsSL ${env.APP_URL}/agent.mjs -o shareference-agent.mjs && node shareference-agent.mjs ${token} ${env.APP_URL}` };
 }
 
 export async function toggleListingAction(form: FormData): Promise<void> {

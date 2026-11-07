@@ -81,11 +81,15 @@ export async function createGrantFromPurchase(listing: Listing, buyerId: string,
   const ts = now();
   const isSeat = listing.kind === "seat";
   const key = isSeat ? null : issueApiKey();
+  // Computer time is sold in blocks of seatMinutes; the key stops working when the time is used up.
+  const expiresAt = listing.kind === "compute"
+    ? ts + Math.max(1, Math.round(grossCents / listing.seatPriceCents)) * listing.seatMinutes * 60_000
+    : ts + DEFAULT_KEY_TTL_MS;
   await t.run(
     `INSERT INTO grants
       (id, listing_id, buyer_id, provider_id, key_hash, key_prefix, key_ciphertext, features, models,
        budget_micros, spent_micros, max_rpm, max_tokens_per_request, privacy_floor, starts_at, expires_at, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'private', ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'fast', ?, ?, ?, ?)`,
     [
       id,
       listing.id,
@@ -96,11 +100,11 @@ export async function createGrantFromPurchase(listing: Listing, buyerId: string,
       key ? sealSecret(key.key) : null,
       JSON.stringify(listing.features),
       JSON.stringify(listing.models),
-      isSeat ? 0 : grossCents * MICROS_PER_CENT,
+      isSeat || listing.kind === "compute" ? 0 : grossCents * MICROS_PER_CENT,
       listing.maxRpm,
       listing.maxTokensPerRequest,
       ts,
-      isSeat ? null : ts + DEFAULT_KEY_TTL_MS,
+      isSeat ? null : expiresAt,
       isSeat ? "pending_assignment" : "active",
       ts,
     ],
@@ -167,7 +171,7 @@ export async function updateLimits(grantId: string, actorId: string, update: Lim
   if (!isOwner || grant.status !== "active") return false;
   const listing = await import("./listings").then((m) => m.getListing(grant.listingId));
   if (!listing || update.maxRpm > listing.maxRpm || update.maxTokensPerRequest > listing.maxTokensPerRequest) return false;
-  const ceiling = grant.createdAt + DEFAULT_KEY_TTL_MS;
+  const ceiling = listing.kind === "compute" ? (grant.expiresAt ?? now()) : grant.createdAt + DEFAULT_KEY_TTL_MS;
   if (listing.kind !== "seat" && (update.expiresAt === null || update.expiresAt > ceiling || update.expiresAt <= now())) return false;
   await db.run("UPDATE grants SET max_rpm = ?, max_tokens_per_request = ?, privacy_floor = ?, expires_at = ? WHERE id = ?", [
     update.maxRpm,

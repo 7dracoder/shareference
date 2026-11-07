@@ -5,8 +5,9 @@ import { aliasOf } from "./users";
 import { allowedUpstream } from "./upstream";
 import { checkPolicy } from "./policy";
 import { agentLog } from "./agents/log";
+import { getNode } from "./nodes";
 
-export type ListingKind = "pool" | "api_key" | "seat";
+export type ListingKind = "pool" | "api_key" | "seat" | "compute";
 export type ListingStatus = "active" | "paused" | "rejected";
 export type Feature = "chat" | "embeddings" | "rerank";
 
@@ -29,6 +30,7 @@ export interface Listing {
   maxRpm: number;
   maxTokensPerRequest: number;
   upstreamBaseUrl: string | null;
+  nodeId: string | null;
   hasCredential: boolean;
   status: ListingStatus;
   createdAt: number;
@@ -51,6 +53,7 @@ interface ListingRow {
   max_rpm: number;
   max_tokens_per_request: number;
   upstream_base_url: string | null;
+  node_id: string | null;
   has_credential: boolean;
   status: ListingStatus;
   created_at: number;
@@ -60,7 +63,7 @@ interface ListingRow {
 const SELECT = `
   SELECT l.id, l.provider_id, u.alias AS provider_alias, l.kind, l.service, l.title, l.description, l.features, l.models,
          l.price_per_1k_micros, l.seat_price_cents, l.seat_minutes, l.min_purchase_cents, l.max_rpm, l.max_tokens_per_request,
-         l.upstream_base_url, (l.vault_ciphertext IS NOT NULL) AS has_credential, l.status, l.created_at
+         l.upstream_base_url, l.node_id, (l.vault_ciphertext IS NOT NULL) AS has_credential, l.status, l.created_at
   FROM listings l LEFT JOIN users u ON u.id = l.provider_id`;
 
 function toListing(row: ListingRow): Listing {
@@ -81,6 +84,7 @@ function toListing(row: ListingRow): Listing {
     maxRpm: row.max_rpm,
     maxTokensPerRequest: row.max_tokens_per_request,
     upstreamBaseUrl: row.upstream_base_url,
+    nodeId: row.node_id,
     hasCredential: row.has_credential,
     status: row.status,
     createdAt: row.created_at,
@@ -96,11 +100,11 @@ async function ensurePoolListing(): Promise<void> {
     `INSERT INTO listings
       (id, provider_id, kind, service, title, description, features, models, min_purchase_cents, max_rpm, max_tokens_per_request, status, created_at)
      VALUES (?, NULL, 'pool', 'shareference-pool', ?, ?, ?, '[]', 500, 120, 8000, 'active', ?)
-     ON CONFLICT (id) DO NOTHING`,
+     ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description`,
     [
       POOL_LISTING_ID,
-      "Shareference private inference pool",
-      "One OpenAI-compatible key. Requests are routed to Superlinked SIE (fast), Darkbloom (private) or Tinfoil (verified) by cost and privacy. Pool chat uses a best-effort personal-data check; detected or unchecked content requires the verified tier. Embeddings and rerank run on SIE.",
+      "Shareference pool credit",
+      "Prepaid credit run by Shareference, with one key that works in any OpenAI-compatible app. Everyday chat goes to OpenRouter (DeepSeek). Anything that looks like personal data goes to Tinfoil, where the model runs in a verified enclave. Embeddings and rerank are included.",
       JSON.stringify(["chat", "embeddings", "rerank"]),
       now(),
     ],
@@ -132,7 +136,7 @@ export async function listingsByProvider(providerId: string): Promise<Listing[]>
 }
 
 export interface NewListingInput {
-  kind: "api_key" | "seat";
+  kind: "api_key" | "seat" | "compute";
   service: string;
   title: string;
   description: string;
@@ -146,6 +150,7 @@ export interface NewListingInput {
   maxTokensPerRequest: number;
   upstreamBaseUrl: string | null;
   credential: string | null;
+  nodeId?: string | null;
 }
 
 export interface CreateListingResult {
@@ -168,13 +173,18 @@ export async function createListing(providerId: string, input: NewListingInput):
   if (input.kind === "api_key" && (!input.credential || !input.upstreamBaseUrl)) {
     return { ok: false, message: "API listings need a base URL and an API key." };
   }
+  if (input.kind === "compute") {
+    const node = input.nodeId ? await getNode(input.nodeId) : null;
+    if (!node || node.providerId !== providerId) return { ok: false, message: "Connect your computer first." };
+    if (input.seatPriceCents < 100) return { ok: false, message: "Set a price of at least $1 per hour." };
+  }
   const id = newId("lst");
   await db.run(
     `INSERT INTO listings
       (id, provider_id, kind, service, title, description, features, models, price_per_1k_micros,
        seat_price_cents, seat_minutes, min_purchase_cents, max_rpm, max_tokens_per_request,
-       upstream_base_url, vault_ciphertext, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+       upstream_base_url, vault_ciphertext, node_id, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
     [
       id,
       providerId,
@@ -192,6 +202,7 @@ export async function createListing(providerId: string, input: NewListingInput):
       input.maxTokensPerRequest,
       input.upstreamBaseUrl,
       input.credential ? sealSecret(input.credential) : null,
+      input.nodeId ?? null,
       now(),
     ],
   );

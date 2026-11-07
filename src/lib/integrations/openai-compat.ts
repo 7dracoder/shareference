@@ -190,6 +190,27 @@ export async function callOpenAiCompatible(opts: CallOptions): Promise<BackendRe
   return { response: Response.json(json), usage: Promise.resolve(usage), model: opts.model };
 }
 
+/** Replays a finished completion as a one-chunk SSE stream for clients that asked to stream. */
+export function completionAsSse(completion: unknown): Response {
+  const c = completion as { id?: string; model?: string; choices?: Array<{ index?: number; message?: { role?: string; content?: unknown }; finish_reason?: string }>; usage?: unknown };
+  const enc = new TextEncoder();
+  const chunk = {
+    id: c.id ?? "chatcmpl",
+    object: "chat.completion.chunk",
+    model: c.model,
+    choices: (c.choices ?? []).map((ch) => ({ index: ch.index ?? 0, delta: { role: ch.message?.role ?? "assistant", content: ch.message?.content ?? "" }, finish_reason: ch.finish_reason ?? "stop" })),
+    usage: c.usage,
+  };
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(enc.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+      controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: SSE_HEADERS });
+}
+
 /** Clearly-labelled stand-in used only when DEMO_MODE is on and a backend has no keys. */
 export function mockChat(backend: string, request: ChatRequest): BackendResult {
   const text = `[demo] ${backend} is not configured yet, so this is a placeholder reply. Add its API key in .env.local to get real output.`;

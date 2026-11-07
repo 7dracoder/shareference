@@ -5,14 +5,15 @@ import "server-only";
  * The registry controls supported integrations; it does not establish resale rights.
  * Review vendor terms before adding entries; this list is a starting point.
  */
-export type SharingRule = "api_org" | "team_seat" | "forbidden";
+export type SharingRule = "api_org" | "team_seat" | "own_hardware" | "forbidden";
+export type ShareKind = "api_key" | "seat" | "compute";
 
 export interface ServicePolicy {
   id: string;
   name: string;
   rule: SharingRule;
   note: string;
-  kinds: ReadonlyArray<"api_key" | "seat">;
+  kinds: ReadonlyArray<ShareKind>;
   /** Fixed OpenAI-compatible API address, so providers only paste their key. */
   baseUrl?: string;
 }
@@ -97,6 +98,13 @@ export const SERVICE_POLICIES: readonly ServicePolicy[] = [
   },
   seat("other-team-seat", "Other team-plan seat", "that service's admin console"),
   {
+    id: "own-computer",
+    name: "Your computer (AI models you run locally)",
+    rule: "own_hardware",
+    note: "Buyers send requests to the models on your machine, so you can see their prompts. Only share hardware you own.",
+    kinds: ["compute"],
+  },
+  {
     id: "personal-login",
     name: "Personal subscription or login (Claude Pro/Max, ChatGPT Plus, etc.)",
     rule: "forbidden",
@@ -111,12 +119,12 @@ export interface PolicyDecision {
   policy?: ServicePolicy;
 }
 
-export function checkPolicy(serviceId: string, kind: "api_key" | "seat"): PolicyDecision {
+export function checkPolicy(serviceId: string, kind: ShareKind): PolicyDecision {
   const policy = SERVICE_POLICIES.find((p) => p.id === serviceId);
   if (!policy) return { allowed: false, reason: "Unknown service. Ask the platform admin to review its terms first." };
   if (policy.rule === "forbidden") return { allowed: false, reason: policy.note, policy };
   if (!policy.kinds.includes(kind)) {
-    return { allowed: false, reason: `${policy.name} cannot be shared as ${kind === "seat" ? "a seat" : "an API key"}.`, policy };
+    return { allowed: false, reason: `${policy.name} cannot be shared this way.`, policy };
   }
   return { allowed: true, reason: policy.note, policy };
 }

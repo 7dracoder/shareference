@@ -7,7 +7,9 @@ import { createListing, getListing, type Listing } from "../src/lib/listings";
 import { createOrder, getPayment, markSent, confirmProviderReceipt, confirmPlatformReceipt, paymentLegs, cancelOrder } from "../src/lib/payments";
 import { getGrant, revealKey, recordUsage, revokeGrant, updateLimits, activateSeat } from "../src/lib/grants";
 import { reserveBudget } from "../src/lib/billing";
-import { authorize } from "../src/lib/api";
+import { authorize, checkOrBlock } from "../src/lib/api";
+import { checkIn, claimJob, createNode, finishJob } from "../src/lib/nodes";
+import { routeChat } from "../src/lib/agents/router";
 
 const enabled = process.env.RUN_DB_TESTS === "true";
 if (enabled && !process.env.DATABASE_URL?.includes("shareference_review_")) throw new Error("DB tests require a dedicated shareference_review_ database");
@@ -72,6 +74,31 @@ test("purchase, settlement, ownership, seat delivery and concurrent budgets", { 
     await confirmProviderReceipt(o.paymentId,provider.id); await confirmPlatformReceipt(o.paymentId,admin);
     const p=await getPayment(o.paymentId); const g=await getGrant(p!.grantId!); assert.equal(g?.deliveryEmail,"invite@example.test"); assert.equal(g.status,"pending_assignment");
     assert.equal(await activateSeat(g.id,stranger.id,120),false); assert.equal(await activateSeat(g.id,provider.id,120),true);
+  });
+  await t.test("computer listings sell hours and relay requests through the provider's agent", async()=>{
+    const base={...input,kind:"compute" as const,service:"own-computer",features:["chat"],models:[],pricePer1kMicros:0,upstreamBaseUrl:null,credential:null,seatPriceCents:200,seatMinutes:60,minPurchaseCents:200};
+    assert.equal((await createListing(provider.id,base)).ok,false);
+    const token=await createNode(provider.id);
+    const nodeId=await checkIn(token,{gpu:"Test GPU",ramGb:32,freeDiskGb:500},["llama3.2"]); assert.ok(nodeId);
+    assert.equal((await createListing(stranger.id,{...base,nodeId})).ok,false);
+    const made=await createListing(provider.id,{...base,nodeId}); assert.ok(made.ok);
+    const listing=await getListing(made.listingId!) as Listing; assert.equal(listing.nodeId,nodeId);
+    const o=await createOrder(listing,buyer,600,"zelle"); assert.ok(o.ok);
+    assert.equal((await getPayment(o.paymentId))?.grossCents,600);
+    await confirmProviderReceipt(o.paymentId,provider.id); await confirmPlatformReceipt(o.paymentId,admin);
+    const g=await getGrant((await getPayment(o.paymentId))!.grantId!); assert.ok(g?.expiresAt);
+    const hours=(g.expiresAt-g.startsAt)/3_600_000; assert.ok(hours>2.99&&hours<3.01,`expected 3 hours, got ${hours}`);
+    assert.equal(await updateLimits(g.id,provider.id,{maxRpm:60,maxTokensPerRequest:4000,privacyFloor:"fast",expiresAt:g.expiresAt+3_600_000}),false);
+    assert.equal(await checkOrBlock({grant:g,listing},"chat",{feature:"chat"}),null);
+
+    const agent=(async()=>{ for(let i=0;i<50;i++){ const job=await claimJob(nodeId!); if(job){ assert.equal((job.request as {model:string}).model,"llama3.2"); await finishJob(nodeId!,job.id,{response:{id:"c1",model:"llama3.2",choices:[{index:0,message:{role:"assistant",content:"hi from the box"},finish_reason:"stop"}],usage:{prompt_tokens:3,completion_tokens:4}}}); return; } await new Promise(r=>setTimeout(r,100)); } })();
+    const routed=await routeChat(g,listing,{messages:[{role:"user",content:"hello"}]},null); await agent;
+    const body=await routed.response.json() as {choices:Array<{message:{content:string}}>};
+    assert.equal(body.choices[0].message.content,"hi from the box"); assert.deepEqual(await routed.usage,{promptTokens:3,completionTokens:4}); assert.equal(routed.pricePer1kMicros,0);
+    assert.equal((await db.get<{n:number}>("SELECT COUNT(*) AS n FROM node_jobs WHERE node_id = ?",[nodeId]))?.n,0);
+    await assert.rejects(routeChat(g,listing,{model:"not-installed",messages:[{role:"user",content:"x"}]},null),/not installed/i);
+    await db.run("UPDATE nodes SET last_seen = 0 WHERE id = ?",[nodeId]);
+    await assert.rejects(routeChat(g,listing,{messages:[{role:"user",content:"x"}]},null),/offline/i);
   });
   await t.test("Clerk links an existing profile only with a verified email, preserving orders", async()=>{
     const linked=await syncClerkUser({id:`clerk_${tag}`,name:"Getter",verifiedEmail:buyer.email}); assert.equal(linked.id,buyer.id);

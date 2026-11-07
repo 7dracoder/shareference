@@ -23,9 +23,9 @@ export const TIER_INFO: Record<Tier, TierInfo> = {
   fast: {
     tier: "fast",
     label: "Fast",
-    backend: "Superlinked SIE",
-    guarantee: "Small task-specific open models. Cheapest.",
-    pricePer1kMicros: 60,
+    backend: "OpenRouter (DeepSeek)",
+    guarantee: "General chat for everyday requests. Anything with personal data goes to Tinfoil instead.",
+    pricePer1kMicros: 800,
   },
   private: {
     tier: "private",

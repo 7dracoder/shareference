@@ -34,7 +34,7 @@ export async function POST(req: Request): Promise<Response> {
   // Cap generation at the owner's per-request limit even if the client didn't ask for one.
   const { max_completion_tokens: completionLimit, ...rest } = request;
   const capped = { ...rest, max_tokens: Math.min(request.max_tokens ?? completionLimit ?? auth.grant.maxTokensPerRequest, auth.grant.maxTokensPerRequest) };
-  const maxPrice = auth.listing.kind === "api_key" ? auth.listing.pricePer1kMicros : TIER_INFO.verified.pricePer1kMicros;
+  const maxPrice = auth.listing.kind === "pool" ? TIER_INFO.verified.pricePer1kMicros : auth.listing.pricePer1kMicros;
   // UTF-8 bytes conservatively bound text token counts, including message framing.
   const maxTokens = new TextEncoder().encode(JSON.stringify(capped)).length + capped.max_tokens + request.messages.length * 32;
   const reservationId = await reserveBudget(auth.grant.id, costMicros(maxTokens, maxPrice));
@@ -94,6 +94,7 @@ export async function POST(req: Request): Promise<Response> {
       reason: `upstream_${status}`,
     });
     const clientStatus = status === 400 || status === 429 || status === 503 ? status : 502;
-    return openAiError(clientStatus, "upstream_error", "The model backend failed. You were not charged.");
+    const detail = auth.listing.kind === "compute" && error instanceof BackendError ? `${error.message}. ` : "";
+    return openAiError(clientStatus, "upstream_error", `${detail || "The model backend failed. "}You were not charged.`);
   }
 }

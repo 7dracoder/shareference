@@ -6,9 +6,18 @@ import { paymentsForBuyer } from "@/lib/payments";
 import { env } from "@/lib/env";
 import { formatCents, formatUsd } from "@/lib/pricing";
 import { aliasOf } from "@/lib/users";
+import { getNode } from "@/lib/nodes";
 import { RevealKey } from "@/components/reveal-key";
 import { LimitsForm } from "@/components/limits-form";
 import { revealKeyAction, buyerRevokeAction } from "@/app/actions/buyer";
+
+const STATUS_LABEL: Record<Grant["status"], string> = {
+  active: "Active",
+  pending_assignment: "Waiting for seat",
+  exhausted: "Credit used up",
+  expired: "Expired",
+  revoked: "Ended",
+};
 
 const STATUS_STYLE: Record<Grant["status"], string> = {
   active: "text-acid",
@@ -25,7 +34,7 @@ function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
       <div className="h-1.5 w-full overflow-hidden rounded bg-line">
         <div className="h-full bg-acid" style={{ width: `${pct}%` }} />
       </div>
-      <p className="mt-1 font-mono text-xs text-mid">
+      <p className="mt-1 text-sm text-mid">
         {formatUsd(spent)} of {formatUsd(budget)} used
       </p>
     </div>
@@ -40,14 +49,16 @@ async function GrantCard({ grant }: { grant: Grant }) {
   ]);
   const isPool = listing?.kind === "pool";
   const isSeat = listing?.kind === "seat";
+  const node = listing?.kind === "compute" && listing.nodeId ? await getNode(listing.nodeId) : null;
+  const exampleModel = isPool ? "shareference-fast" : node ? (node.models[0] ?? "model-id") : (grant.models[0] ?? "model-id");
   return (
     <article className="card space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-medium">{listing?.title ?? "Listing removed"}</h2>
-          <p className="font-mono text-xs text-low">from {providerAlias}</p>
+          <p className="text-sm text-low">from {providerAlias}</p>
         </div>
-        <span className={`font-mono text-xs uppercase ${STATUS_STYLE[grant.status]}`}>{grant.status.replace("_", " ")}</span>
+        <span className={`text-sm ${STATUS_STYLE[grant.status]}`}>{STATUS_LABEL[grant.status]}</span>
       </div>
 
       {isSeat ? (
@@ -60,9 +71,17 @@ async function GrantCard({ grant }: { grant: Grant }) {
         </p>
       ) : (
         <>
-          <BudgetBar spent={grant.spentMicros} budget={grant.budgetMicros} />
+          {node ? (
+            <div className="space-y-1 text-sm text-mid">
+              <p>{grant.expiresAt ? `${grant.status === "active" ? "Works until" : "Ended"} ${new Date(grant.expiresAt).toLocaleString()}.` : null} The computer is {node.online ? "online" : "offline right now"}.</p>
+              <p>Models: {node.models.length ? node.models.join(", ") : "none available right now"}</p>
+              <p className="text-low">Requests run on the owner&apos;s computer, so they can see your prompts.</p>
+            </div>
+          ) : (
+            <BudgetBar spent={grant.spentMicros} budget={grant.budgetMicros} />
+          )}
           {grant.keyPrefix && grant.status === "active" && <RevealKey grantId={grant.id} keyPrefix={grant.keyPrefix} action={revealKeyAction} />}
-          <p className="font-mono text-xs text-mid">
+          <p className="text-sm text-mid">
             {usage.requests} requests · {usage.tokens.toLocaleString()} tokens · {usage.blocked} blocked
             {usage.byBackend.length > 0 && ` · ${usage.byBackend.map((b) => `${b.backend}: ${b.requests}`).join(", ")}`}
           </p>
@@ -72,7 +91,7 @@ async function GrantCard({ grant }: { grant: Grant }) {
             <pre className="code mt-2">{`from openai import OpenAI
 client = OpenAI(base_url="${env.APP_URL}/api/v1", api_key="shr_...")
 client.chat.completions.create(
-    model="${isPool ? "shareference-private" : (grant.models[0] ?? "model-id")}",
+    model="${exampleModel}",
     messages=[{"role": "user", "content": "hello"}],
 )`}</pre>
           </details>
@@ -112,19 +131,16 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="kicker">My access</p>
-          <h1 className="mt-3 font-mono text-3xl">Your access, in one place</h1>
-        </div>
+        <h1 className="text-3xl font-semibold tracking-tight">My access</h1>
         <div className="flex gap-3">
           <Link href="/playground" className="btn-ghost">Try a key</Link>
-          <Link href="/marketplace" className="btn">Get access</Link>
+          <Link href="/marketplace" className="btn">Browse listings</Link>
         </div>
       </div>
 
       {openOrders.length > 0 && (
         <section className="card">
-          <h2 className="kicker">Orders waiting on payment</h2>
+          <h2 className="text-lg font-semibold">Orders waiting on payment</h2>
           <ul className="mt-3 divide-y divide-line">
             {openOrders.map((p) => (
               <li key={p.id} className="flex items-center justify-between py-2 text-sm">

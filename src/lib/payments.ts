@@ -4,6 +4,7 @@ import type { Hash } from "viem";
 import { db, now, tx } from "./db";
 import { darkbloomEnabled } from "./integrations/darkbloom";
 import { tinfoilEnabled } from "./integrations/tinfoil";
+import { openrouterEnabled } from "./integrations/openrouter";
 import { env } from "./env";
 import { newId } from "./crypto";
 import { createGrantFromPurchase } from "./grants";
@@ -179,6 +180,7 @@ function newReference(): string {
 
 export function purchaseAmountCents(listing: Listing, requestedCents: number): number {
   if (listing.kind === "seat") return listing.seatPriceCents;
+  if (listing.kind === "compute") return Math.max(1, Math.round(requestedCents / listing.seatPriceCents)) * listing.seatPriceCents;
   return Math.max(listing.minPurchaseCents, requestedCents);
 }
 
@@ -194,7 +196,7 @@ export async function createOrder(listing: Listing, buyer: User, requestedCents:
   const latest = await getListing(listing.id);
   if (!latest) return { ok: false, message: "This listing is no longer available." };
   listing = latest;
-  if (listing.kind === "pool" && !env.DEMO_MODE && !darkbloomEnabled() && !tinfoilEnabled()) return { ok: false, message: "Pool chat is being connected. Please choose a provider listing." };
+  if (listing.kind === "pool" && !env.DEMO_MODE && !openrouterEnabled() && !darkbloomEnabled() && !tinfoilEnabled()) return { ok: false, message: "Pool chat is being connected. Please choose a provider listing." };
   if (listing.kind === "seat" && (!options.deliveryEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(options.deliveryEmail) || options.deliveryEmail.length > 254)) return { ok: false, message: "Enter the email to invite to the team seat." };
   if (listing.status !== "active") return { ok: false, message: "This listing is not available." };
   if (listing.providerId === buyer.id) return { ok: false, message: "You can't buy your own listing." };

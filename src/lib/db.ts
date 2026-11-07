@@ -19,7 +19,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_clerk_id ON users(clerk_id);
 CREATE TABLE IF NOT EXISTS listings (
   id TEXT PRIMARY KEY,
   provider_id TEXT REFERENCES users(id),
-  kind TEXT NOT NULL CHECK (kind IN ('pool','api_key','seat')),
+  kind TEXT NOT NULL CHECK (kind IN ('pool','api_key','seat','compute')),
   service TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT NOT NULL,
@@ -132,6 +132,38 @@ CREATE TABLE IF NOT EXISTS agent_events (
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS agent_events_time ON agent_events(created_at);
+
+-- Providers' own computers, connected by the Shareference agent.
+CREATE TABLE IF NOT EXISTS nodes (
+  id TEXT PRIMARY KEY,
+  provider_id TEXT NOT NULL REFERENCES users(id),
+  token_hash TEXT NOT NULL UNIQUE,
+  specs TEXT NOT NULL DEFAULT '{}',
+  models TEXT NOT NULL DEFAULT '[]',
+  last_seen BIGINT,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS nodes_provider ON nodes(provider_id);
+
+-- Requests relayed to a provider's computer. Rows are deleted as soon as the answer is delivered.
+CREATE TABLE IF NOT EXISTS node_jobs (
+  id TEXT PRIMARY KEY,
+  node_id TEXT NOT NULL REFERENCES nodes(id),
+  request TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('queued','running','done','failed')),
+  response TEXT,
+  error_status INTEGER,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS node_jobs_queue ON node_jobs(node_id, status, created_at);
+
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS node_id TEXT REFERENCES nodes(id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'listings_kind_check' AND pg_get_constraintdef(oid) LIKE '%compute%') THEN
+    ALTER TABLE listings DROP CONSTRAINT IF EXISTS listings_kind_check;
+    ALTER TABLE listings ADD CONSTRAINT listings_kind_check CHECK (kind IN ('pool','api_key','seat','compute'));
+  END IF;
+END $$;
 
 -- Shared rate-limit counters (works across serverless instances).
 CREATE TABLE IF NOT EXISTS rate_hits (

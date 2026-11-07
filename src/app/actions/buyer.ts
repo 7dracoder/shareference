@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { Hash } from "viem";
 import { requireUser } from "@/lib/auth";
 import { getListing } from "@/lib/listings";
+import { getNode } from "@/lib/nodes";
 import { cancelOrder, createOrder, markSent, PAY_METHODS, submitUsdcPayment, type PayMethod } from "@/lib/payments";
 import { revealKey, revokeGrant } from "@/lib/grants";
 import { num, str, type ActionState } from "@/lib/form";
@@ -19,8 +20,15 @@ export async function buyAction(_prev: ActionState, form: FormData): Promise<Act
   const method = str(form, "method");
   const isMethod = (PAY_METHODS as readonly string[]).includes(method) || method === "demo";
   if (!isMethod) return { error: "Pick a payment method." };
-  const cents = Math.round(num(form, "amountUsd", 0) * 100);
-  if (listing.kind !== "seat" && (cents < listing.minPurchaseCents || cents > MAX_PURCHASE_CENTS)) {
+  if (listing.kind === "compute") {
+    const hours = Math.round(num(form, "hours", 0));
+    const maxHours = Math.floor(MAX_PURCHASE_CENTS / listing.seatPriceCents);
+    if (hours < 1 || hours > maxHours) return { error: `Choose between 1 and ${maxHours} hours.` };
+    const node = listing.nodeId ? await getNode(listing.nodeId) : null;
+    if (!node?.online) return { error: "This computer is offline right now. Try again when it's back." };
+  }
+  const cents = listing.kind === "compute" ? Math.round(num(form, "hours", 0)) * listing.seatPriceCents : Math.round(num(form, "amountUsd", 0) * 100);
+  if (listing.kind !== "seat" && listing.kind !== "compute" && (cents < listing.minPurchaseCents || cents > MAX_PURCHASE_CENTS)) {
     return { error: `Amount must be between $${(listing.minPurchaseCents / 100).toFixed(2)} and $${MAX_PURCHASE_CENTS / 100}.` };
   }
   if (!z.string().uuid().safeParse(str(form, "checkoutKey")).success) return { error: "Reload checkout and try again." };

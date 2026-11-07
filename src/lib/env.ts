@@ -36,6 +36,9 @@ const schema = z.object({
   DARKBLOOM_API_KEY: optional,
   DARKBLOOM_MODEL: optional,
 
+  OPENROUTER_API_KEY: optional,
+  OPENROUTER_MODEL: z.string().default("deepseek/deepseek-v4.1-flash-1017"),
+
   TINFOIL_API_KEY: optional,
   TINFOIL_MODEL: z.string().default("llama3-3-70b"),
 
@@ -81,6 +84,7 @@ export const dataDir: string = env.DATA_DIR ?? path.join(os.homedir(), ".sharefe
 export interface IntegrationStatus {
   bankPayouts: boolean;
   usdc: boolean;
+  openrouter: boolean;
   darkbloom: boolean;
   tinfoil: boolean;
   sie: boolean;
@@ -91,6 +95,7 @@ export function integrationStatus(): IntegrationStatus {
   return {
     bankPayouts: Boolean(env.PLATFORM_ZELLE || env.PLATFORM_VENMO || env.PLATFORM_CASHAPP || env.PLATFORM_PAYPAL),
     usdc: Boolean(env.PLATFORM_USDC_ADDRESS),
+    openrouter: Boolean(env.OPENROUTER_API_KEY),
     darkbloom: Boolean(env.DARKBLOOM_BASE_URL && env.DARKBLOOM_API_KEY),
     tinfoil: Boolean(env.TINFOIL_API_KEY),
     sie: Boolean(env.SIE_BASE_URL),

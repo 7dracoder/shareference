@@ -33,7 +33,7 @@ export async function checkOrBlock(
   endpoint: string,
   input: { feature: Feature; model?: string; requestedTokens?: number },
 ): Promise<Response | null> {
-  const denial = await enforce(auth.grant, input);
+  const denial = await enforce(auth.grant, { ...input, timeBased: auth.listing.kind === "compute" });
   if (!denial) return null;
   await recordUsage({
     grantId: auth.grant.id,

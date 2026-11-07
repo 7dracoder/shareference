@@ -10,23 +10,23 @@ Live: [shareference-app.vercel.app](https://shareference-app.vercel.app)
 
 | Kind | Examples | What the buyer gets |
 |---|---|---|
-| **API key / credits** | Claude (Anthropic API), OpenAI, Google Gemini, Baseten, OpenRouter, Groq, Together, Fireworks, DeepInfra, Mistral, xAI, DeepSeek, Cerebras, Perplexity, Cohere, Hugging Face, Nebius, SambaNova, Novita, Darkbloom, Tinfoil, or any other OpenAI-compatible API | A Shareference key (`shr_...`) that forwards to the provider's account, with a budget, rate limit, token cap, model list and expiry. Providers just pick the service and paste their key |
-| **Team seat** | Claude Team, ChatGPT Business, Cursor Teams, GitHub Copilot Business, Canva, Figma, Notion, or any other team plan | Time-boxed seat. The provider adds and removes the buyer in that service's admin console; Shareference tracks the time |
-| **Inference pool** (by Shareference) | Superlinked SIE, Darkbloom, Tinfoil | One key routed by cost and privacy (see below) |
+| **API key / credits** | Claude (Anthropic API), OpenAI, Google Gemini, **Baseten**, OpenRouter, Groq, Together, Fireworks, DeepInfra, Mistral, **xAI (Grok)**, DeepSeek, Cerebras, Perplexity, Cohere, Hugging Face, Nebius, SambaNova, Novita, Darkbloom, Tinfoil, or any other OpenAI-compatible API | A Shareference key (`shr_...`) that forwards to the provider's account, with a budget, rate limit, token cap, model list and expiry. Providers pick the service (logo + name) and paste their key |
+| **Team seat** | Claude Team, ChatGPT Business, **Cursor Teams**, GitHub Copilot Business, Canva, Figma, Notion, or any other team plan | Time-boxed seat. The provider adds and removes the buyer in that service's admin console; Shareference tracks the time |
+| **Your computer** | Ollama or LM Studio on the machine you own | Buyers rent hours. Specs (CPU, RAM, GPU, free disk, OS) and installed models show on the listing. Access ends when the hours run out, or when you stop the agent / revoke |
+| **Inference pool** (by Shareference) | OpenRouter (DeepSeek) by default; optional Darkbloom; Tinfoil for personal data | One key routed by cost and privacy (see below) |
 
 **Personal subscriptions (Claude Pro/Max, ChatGPT Plus, and similar) can't be shared.** They have no API key, so sharing one means handing over your login, which those services forbid and can ban accounts for. Share API credit or a team-plan seat instead. Providers must also confirm they're allowed to share under each service's terms.
 
-The supported list lives in `src/lib/policy.ts`. Adding a service is one line with its OpenAI-compatible address.
+The supported list lives in `src/lib/policy.ts`. The listing form shows each service with a logo mark; Baseten, Grok (xAI) and Cursor Teams are called out first because those are the ones we're listing first.
 
-### Can I share my own PC or GPU?
+### Share your own computer
 
-Not as a self-serve option yet. A provider's API address must be **HTTPS on an approved host** (this blocks the platform being used to reach private networks). To share a model running on your own machine (Ollama, LM Studio, vLLM, etc.):
+1. On **Share**, click **Connect a computer**. Run the one-line command it shows (needs Node.js 18+).
+2. Start Ollama or LM Studio with at least one model. The agent reports your specs and models.
+3. Create a **My computer** listing with an hourly price. Buyers see GPU/CPU/RAM/disk and which models are installed.
+4. Leave the terminal open while you want to be available. Closing it (or pressing Ctrl+C) takes you offline. When a buyer's hours end, their key stops working.
 
-1. Expose its OpenAI-compatible endpoint over HTTPS with a fixed hostname, for example a Cloudflare Tunnel on `llm.yourdomain.com`.
-2. The platform owner adds that hostname to `PROVIDER_UPSTREAM_HOSTS`.
-3. List it as "OpenAI-compatible inference API" with that URL and your model names.
-
-Your machine has to stay online for buyers' requests to work.
+Requests run on your machine, so you can see buyers' prompts. The listing page warns them about that.
 
 ## How it works
 
@@ -72,21 +72,21 @@ One key, three tiers. The router picks the cheapest tier that meets the buyer's 
 
 | Tier | Backend | Notes |
 |---|---|---|
-| `fast` | Superlinked SIE | Small open models, cheapest |
-| `private` | Darkbloom | Private inference on attested Macs |
+| `fast` | OpenRouter (`deepseek/deepseek-v4.1-flash-1017` by default) | Everyday chat for the pool |
+| `private` | Darkbloom (optional) | Only if you configure Darkbloom keys |
 | `verified` | Tinfoil | Runs in an attested enclave; see `/verify` |
 
-SIE scans each pool request for personal data. If it finds some, or can't check, the request is moved to Tinfoil automatically.
+If SIE is configured, it scans pool requests for personal data. If it finds some, or can't check, the request is moved to Tinfoil automatically.
 
 ### Why the platform needs its own AI keys
 
-The `SIE_*`, `DARKBLOOM_*` and `TINFOIL_*` keys belong to the platform, not to providers. They're only used for:
+`OPENROUTER_*`, optional `DARKBLOOM_*`, `TINFOIL_*` and optional `SIE_*` belong to the platform, not to providers. They're only used for:
 
 - the **inference pool** listing (the platform sells inference itself),
-- the **personal-data check** and the `/api/v1/embeddings` and `/api/v1/rerank` endpoints (SIE),
+- the **personal-data check** and the `/api/v1/embeddings` and `/api/v1/rerank` endpoints (SIE, if set),
 - the live enclave check on **`/verify`** (Tinfoil).
 
-Provider listings always use the provider's own key. Without platform keys, the marketplace still works; only the pool can't be bought.
+Provider listings always use the provider's own key. Without OpenRouter (or another configured pool backend), the marketplace still works; only the pool can't be bought.
 
 ## API (OpenAI-compatible)
 
@@ -108,7 +108,7 @@ curl https://shareference-app.vercel.app/api/v1/chat/completions \
 | `/marketplace` | All listings, including the pool |
 | `/orders/[id]` | Who to pay, how much, and the reference code |
 | `/dashboard` | Buyer keys, remaining credit, usage, end access |
-| `/provider` | Payout methods, listings, confirm payments, limits, seats, revoke |
+| `/provider` | Payout methods, computers, listings, confirm payments, limits, seats, revoke |
 | `/playground` | Try a key in the browser |
 | `/guide` | How it works |
 | `/verify` | Live Tinfoil attestation and the trust model |
@@ -145,7 +145,9 @@ npm run typecheck && npm run lint && npm test && npm run build
 | `APP_URL` | no | Public site address |
 | `DEMO_MODE` | no | Fake payments and mock models for local dev. The app refuses to start in production if it's `true` |
 | `PROVIDER_UPSTREAM_HOSTS` | no | Extra hostnames providers may use, comma separated |
-| `SIE_*`, `DARKBLOOM_*`, `TINFOIL_*` | no | Platform AI keys (see above) |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | for the pool | Platform pool "fast" tier |
+| `TINFOIL_*` | recommended | Verified pool tier + `/verify` |
+| `DARKBLOOM_*`, `SIE_*` | no | Optional private tier / embeddings / personal-data scan |
 | `COGNEE_BASE_URL`, `COGNEE_API_KEY`, `COGNEE_TENANT_ID` | no | Shared agent memory |
 
 See `.env.example` for every option.

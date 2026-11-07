@@ -23,15 +23,14 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="mx-auto max-w-2xl">
-      <p className="kicker">Order {payment.reference}</p>
-      <h1 className="mt-3 font-mono text-2xl">{listing?.title ?? "Order"}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">{listing?.title ?? "Order"}</h1>
       <p className="mt-2 text-mid">
-        Total {formatCents(payment.grossCents)} · {methodLabel}
+        Order {payment.reference} · {formatCents(payment.grossCents)} · {methodLabel}
       </p>
 
       {payment.status === "completed" && (
         <div className="card mt-6 border-acid/50">
-          <p className="text-acid">{grant?.status === "pending_assignment" ? "Payment confirmed. Your provider will send your seat invitation." : "Payment confirmed. Your access is ready."}</p>
+          <p className="text-acid">{grant?.status === "pending_assignment" ? "Payment confirmed. Your provider will send your seat invitation." : grant?.expiresAt && listing?.kind === "compute" ? `Payment confirmed. Your access works until ${new Date(grant.expiresAt).toLocaleString()}.` : "Payment confirmed. Your access is ready."}</p>
           <Link href="/dashboard" className="btn mt-4">Go to my access</Link>
         </div>
       )}
@@ -41,13 +40,13 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
       {open && (
         <>
           <div className="card mt-6 space-y-4">
-            <h2 className="kicker">Send these payments directly</h2>
+            <h2 className="font-semibold">Send these payments</h2>
             {isUsdc ? (
               <p className="text-sm text-mid">Send USDC on {usdcNetworkLabel()} from one wallet to each address below.</p>
             ) : (
               <p className="text-sm text-mid">
                 Open {methodLabel} and send each amount below. Put the reference{" "}
-                <code className="font-mono text-acid">{payment.reference}</code> in the memo so recipients can match it.
+                <code className="font-mono font-medium text-hi">{payment.reference}</code> in the memo so recipients can match it.
                 {payment.method === "zelle" && " Zelle shows the bank account holder's real name when you send; that's expected."}
               </p>
             )}
@@ -60,7 +59,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                     {leg.holderName && <p className="text-xs text-low">Recipient: {leg.holderName}</p>}
                   </div>
                   <div className="text-right">
-                    <p className="font-mono text-lg">{formatCents(leg.cents)}</p>
+                    <p className="text-lg font-semibold">{formatCents(leg.cents)}</p>
                     <p className={`text-xs ${leg.confirmed ? "text-acid" : "text-low"}`}>{leg.confirmed ? "Received" : "Waiting for confirmation"}</p>
                   </div>
                 </li>
@@ -70,7 +69,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
 
           {isUsdc ? (
             <div className="card mt-4">
-              <h2 className="kicker">Verify on-chain</h2>
+              <h2 className="font-semibold">Check the transfer on-chain</h2>
               <p className="mt-2 text-sm text-mid">Paste the transaction hash(es). Access is issued as soon as the transfers check out.</p>
               <div className="mt-4">
                 <ActionForm action={submitUsdcAction} submitLabel="Verify payment" pendingLabel="Checking the chain…">

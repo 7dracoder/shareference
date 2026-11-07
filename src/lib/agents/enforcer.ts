@@ -15,6 +15,8 @@ export interface EnforceInput {
   feature: Feature;
   model?: string;
   requestedTokens?: number;
+  /** Computer access is paid by the hour, so only its expiry limits it. */
+  timeBased?: boolean;
 }
 
 /**
@@ -42,7 +44,7 @@ export async function enforce(grant: Grant, input: EnforceInput): Promise<Denial
       message: `max_tokens ${input.requestedTokens} exceeds the owner's limit of ${grant.maxTokensPerRequest}.`,
     };
   }
-  if (grant.spentMicros >= grant.budgetMicros) {
+  if (!input.timeBased && grant.spentMicros >= grant.budgetMicros) {
     return { status: 402, code: "budget_exhausted", message: "Budget used up. Buy more credit to continue." };
   }
   if (!(await hit(`grant:${grant.id}`, grant.maxRpm, WINDOW_MS))) {

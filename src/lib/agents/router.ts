@@ -9,9 +9,12 @@ import { agentLog } from "./log";
 import { darkbloomChat, darkbloomEnabled } from "../integrations/darkbloom";
 import { tinfoilChat, tinfoilEnabled } from "../integrations/tinfoil";
 import { detectPii, sieChat, sieEnabled } from "../integrations/sie";
+import { openrouterChat, openrouterEnabled } from "../integrations/openrouter";
+import { awaitJob, enqueueJob, getNode, JOB_TTL_MS } from "../nodes";
 import {
   BackendError,
   callOpenAiCompatible,
+  completionAsSse,
   messagesText,
   mockChat,
   type BackendResult,
@@ -32,10 +35,16 @@ interface TierBackend {
 }
 
 const BACKENDS: Record<Tier, TierBackend> = {
-  fast: { enabled: sieEnabled, call: sieChat, name: "superlinked-sie" },
+  fast: openrouterEnabled()
+    ? { enabled: openrouterEnabled, call: openrouterChat, name: "openrouter" }
+    : { enabled: sieEnabled, call: sieChat, name: "superlinked-sie" },
   private: { enabled: darkbloomEnabled, call: darkbloomChat, name: "darkbloom" },
   verified: { enabled: tinfoilEnabled, call: tinfoilChat, name: "tinfoil" },
 };
+
+export function tierEnabled(tier: Tier): boolean {
+  return BACKENDS[tier].enabled();
+}
 
 export function parseTier(value: string | null): Tier | null {
   return value && (TIERS as readonly string[]).includes(value) ? (value as Tier) : null;
@@ -99,6 +108,32 @@ async function routePool(grant: Grant, request: ChatRequest, requested: Tier | n
   throw lastError ?? new BackendError(`No backend configured for tier '${tier}' or above`, 503, false);
 }
 
+/** Computer listings: queue the request for the provider's agent and wait for its answer. */
+async function routeComputer(listing: Listing, request: ChatRequest): Promise<RoutedResult> {
+  const node = listing.nodeId ? await getNode(listing.nodeId) : null;
+  if (!node?.online) throw new BackendError("The provider's computer is offline", 503, false);
+  const model = request.model ?? node.models[0];
+  if (!model || !node.models.includes(model)) {
+    throw new BackendError(`Model not installed. Available: ${node.models.join(", ") || "none"}`, 400, false);
+  }
+  const jobId = await enqueueJob(node.id, { ...request, model, stream: false });
+  const result = await awaitJob(jobId, JOB_TTL_MS - 5_000);
+  if (!result) throw new BackendError("The provider's computer didn't answer in time", 504, true);
+  if (result.response === undefined) throw new BackendError("The provider's computer returned an error", result.errorStatus ?? 502, false);
+  const completion = result.response as { usage?: { prompt_tokens?: number; completion_tokens?: number } };
+  const usage = { promptTokens: completion.usage?.prompt_tokens ?? 0, completionTokens: completion.usage?.completion_tokens ?? 0 };
+  return {
+    response: request.stream ? completionAsSse(completion) : Response.json(completion),
+    usage: Promise.resolve(usage),
+    model,
+    backend: "computer",
+    tier: "shared",
+    pricePer1kMicros: 0,
+    upgradedForPii: false,
+  };
+}
+
 export function routeChat(grant: Grant, listing: Listing, request: ChatRequest, requested: Tier | null): Promise<RoutedResult> {
+  if (listing.kind === "compute") return routeComputer(listing, request);
   return listing.kind === "api_key" ? routeShared(listing, request) : routePool(grant, request, requested);
 }
