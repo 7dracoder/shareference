@@ -91,7 +91,8 @@ async function routePool(grant: Grant, request: ChatRequest, requested: Tier | n
 
   if (env.DEMO_MODE) {
     const result = mockChat(BACKENDS[tier].name, request);
-    return { ...result, backend: `${BACKENDS[tier].name}-demo`, tier, pricePer1kMicros: TIER_INFO[tier].pricePer1kMicros, upgradedForPii };
+    // Placeholder replies are never billed.
+    return { ...result, backend: `${BACKENDS[tier].name}-demo`, tier, pricePer1kMicros: 0, upgradedForPii };
   }
   throw lastError ?? new BackendError(`No backend configured for tier '${tier}' or above`, 503, false);
 }

@@ -19,7 +19,7 @@ function loadSecret(value: string | undefined, file: string): Buffer {
     return buf.subarray(0, KEY_BYTES);
   }
   if (env.NODE_ENV === "production") throw new Error(`${file} is required in production`);
-  const p = path.join(dataDir, `.${file}`);
+  const p = path.join(/*turbopackIgnore: true*/ dataDir, `.${file}`);
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   if (!fs.existsSync(p)) {
     fs.writeFileSync(p, crypto.randomBytes(KEY_BYTES).toString("base64"), { mode: 0o600 });
@@ -27,8 +27,19 @@ function loadSecret(value: string | undefined, file: string): Buffer {
   return Buffer.from(fs.readFileSync(p, "utf8"), "base64");
 }
 
-const sessionKey = loadSecret(env.SESSION_SECRET, "session-secret");
-const vaultKey = loadSecret(env.VAULT_KEY, "vault-key");
+// Loaded on first use so `next build` never needs runtime secrets.
+let sessionKeyCache: Buffer | null = null;
+let vaultKeyCache: Buffer | null = null;
+
+function sessionKey(): Buffer {
+  sessionKeyCache ??= loadSecret(env.SESSION_SECRET, "session-secret");
+  return sessionKeyCache;
+}
+
+function vaultKey(): Buffer {
+  vaultKeyCache ??= loadSecret(env.VAULT_KEY, "vault-key");
+  return vaultKeyCache;
+}
 
 export function newId(prefix: string): string {
   return `${prefix}_${crypto.randomBytes(12).toString("base64url")}`;
@@ -37,7 +48,7 @@ export function newId(prefix: string): string {
 /** Encrypts a credential with AES-256-GCM. Output: base64url(iv|tag|ciphertext). */
 export function sealSecret(plaintext: string): string {
   const iv = crypto.randomBytes(IV_BYTES);
-  const cipher = crypto.createCipheriv("aes-256-gcm", vaultKey, iv);
+  const cipher = crypto.createCipheriv("aes-256-gcm", vaultKey(), iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString("base64url");
 }
@@ -47,7 +58,7 @@ export function openSecret(sealed: string): string {
   const iv = raw.subarray(0, IV_BYTES);
   const tag = raw.subarray(IV_BYTES, IV_BYTES + 16);
   const ciphertext = raw.subarray(IV_BYTES + 16);
-  const decipher = crypto.createDecipheriv("aes-256-gcm", vaultKey, iv);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", vaultKey(), iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
@@ -68,7 +79,7 @@ export function issueApiKey(): IssuedKey {
 }
 
 export function sign(value: string): string {
-  return crypto.createHmac("sha256", sessionKey).update(value).digest("base64url");
+  return crypto.createHmac("sha256", sessionKey()).update(value).digest("base64url");
 }
 
 export function safeEqual(a: string, b: string): boolean {

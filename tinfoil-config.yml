@@ -1,0 +1,45 @@
+# Tinfoil Container config: runs Switchboard (router + credential vault) inside
+# an attested enclave so users can verify the exact code that handles their data.
+# Steps: push this repo to a PUBLIC GitHub repo, build/push the Docker image,
+# replace the digest below, then run the Tinfoil release workflow.
+# Template + workflows: https://github.com/tinfoilsh/tinfoil-containers-template
+cvm-version: 0.14.7
+cpus: 2
+memory: 8192
+containers:
+  - name: "switchboard"
+    image: "ghcr.io/REPLACE_ME/switchboard@sha256:REPLACE_WITH_REAL_DIGEST"
+    env:
+      - NODE_ENV: "production"
+      - PORT: "8080"
+      - DATA_DIR: "/data"
+      - PLATFORM_FEE_BPS: "1000"
+      - USDC_NETWORK: "base"
+      - APP_URL
+      - ADMIN_EMAIL
+      - PLATFORM_ZELLE
+      - PLATFORM_ZELLE_NAME
+      - PLATFORM_VENMO
+      - PLATFORM_CASHAPP
+      - PLATFORM_PAYPAL
+      - PLATFORM_USDC_ADDRESS
+      - DARKBLOOM_BASE_URL
+      - DARKBLOOM_MODEL
+      - SIE_BASE_URL
+      - COGNEE_BASE_URL
+      - COGNEE_TENANT_ID
+    secrets:
+      - SESSION_SECRET
+      - VAULT_KEY
+      - DARKBLOOM_API_KEY
+      - TINFOIL_API_KEY
+      - SIE_API_KEY
+      - COGNEE_API_KEY
+    volumes:
+      - data:/data
+    tmpfs:
+      /tmp: "size=100m"
+shim:
+  upstream-port: 8080
+  paths:
+    - /*

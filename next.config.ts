@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3"],
   poweredByHeader: false,
   turbopack: {
+    root: process.cwd(),
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],

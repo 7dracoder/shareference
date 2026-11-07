@@ -10,8 +10,12 @@ interface LimitsFormProps {
   showPrivacy: boolean;
 }
 
+function hoursUntil(expiresAt: number | null): number {
+  return expiresAt ? Math.max(0, Math.round((expiresAt - Date.now()) / 3_600_000)) : 0;
+}
+
 export function LimitsForm({ grantId, maxRpm, maxTokensPerRequest, privacyFloor, expiresAt, showPrivacy }: LimitsFormProps) {
-  const hoursLeft = expiresAt ? Math.max(0, Math.round((expiresAt - Date.now()) / 3_600_000)) : 0;
+  const hoursLeft = hoursUntil(expiresAt);
   return (
     <ActionForm action={updateLimitsAction} submitLabel="Save limits" className="space-y-3">
       <input type="hidden" name="grantId" value={grantId} />

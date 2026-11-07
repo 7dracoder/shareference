@@ -120,7 +120,7 @@ CREATE INDEX IF NOT EXISTS agent_events_time ON agent_events(created_at);
 
 function open(): Database.Database {
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-  const db = new Database(path.join(dataDir, "switchboard.db"));
+  const db = new Database(path.join(/*turbopackIgnore: true*/ dataDir, "switchboard.db"));
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);

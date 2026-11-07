@@ -58,11 +58,13 @@ function load(): Env {
     throw new Error(`Invalid environment: ${parsed.error.message}`);
   }
   const env = parsed.data;
-  if (env.NODE_ENV === "production" && env.DEMO_MODE) {
-    throw new Error("DEMO_MODE must not be enabled in production");
-  }
-  if (env.NODE_ENV === "production" && (!env.SESSION_SECRET || !env.VAULT_KEY)) {
+  // `next build` runs with NODE_ENV=production; runtime checks apply only when serving.
+  const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+  if (!isBuild && env.NODE_ENV === "production" && (!env.SESSION_SECRET || !env.VAULT_KEY)) {
     throw new Error("SESSION_SECRET and VAULT_KEY are required in production");
+  }
+  if (!isBuild && env.NODE_ENV === "production" && env.DEMO_MODE) {
+    process.stderr.write("WARNING: DEMO_MODE is on. Demo payments are enabled; demo orders are excluded from revenue.\n");
   }
   return env;
 }
