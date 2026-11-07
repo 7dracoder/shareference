@@ -1,11 +1,11 @@
 import { Suspense } from "react";
 import { requireAdmin } from "@/lib/auth";
 import { integrationStatus, env } from "@/lib/env";
-import { pendingForPlatform, revenueSummary, METHOD_LABEL } from "@/lib/payments";
+import { pendingForPlatform, revenueSummary, METHOD_LABEL, type PayMethod } from "@/lib/payments";
 import { recentAgentEvents } from "@/lib/agents/log";
 import { ledgerInsights, memoryInsight } from "@/lib/agents/optimizer";
 import { formatCents } from "@/lib/pricing";
-import { aliasOf } from "@/lib/users";
+import { aliasFrom, aliasMap } from "@/lib/users";
 import { confirmFeeAction } from "@/app/actions/provider";
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -28,10 +28,13 @@ async function MemoryPanel() {
 
 export default async function OpsPage() {
   await requireAdmin();
-  const revenue = revenueSummary();
-  const pending = pendingForPlatform();
-  const events = recentAgentEvents(40);
-  const insights = ledgerInsights();
+  const [revenue, pending, events, insights] = await Promise.all([
+    revenueSummary(),
+    pendingForPlatform(),
+    recentAgentEvents(40),
+    ledgerInsights(),
+  ]);
+  const aliases = await aliasMap(pending.map((p) => p.buyerId));
   const integrations = integrationStatus();
 
   return (
@@ -58,8 +61,8 @@ export default async function OpsPage() {
             {pending.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <span className="font-mono">{p.reference}</span>
-                <span>{aliasOf(p.buyerId)}</span>
-                <span>{formatCents(p.feeCents)} via {p.method === "demo" ? "demo" : METHOD_LABEL[p.method]}</span>
+                <span>{aliasFrom(aliases, p.buyerId)}</span>
+                <span>{formatCents(p.feeCents)} via {METHOD_LABEL[p.method as PayMethod]}</span>
                 <span className="text-low">{p.status === "buyer_marked_sent" ? "buyer says sent" : "not sent yet"}</span>
                 <form action={confirmFeeAction}>
                   <input type="hidden" name="paymentId" value={p.id} />

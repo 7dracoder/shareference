@@ -48,7 +48,7 @@ export default function VerifyPage() {
         <h1 className="mt-3 font-mono text-3xl">Don&apos;t trust us. Check.</h1>
         <p className="mt-3 max-w-2xl text-mid">
           The verified tier uses Tinfoil&apos;s SDK, which checks the enclave&apos;s attestation against a release published to the Sigstore transparency
-          log before sending anything. Switchboard itself is packaged to run as a Tinfoil Container, so the router and vault can be attested the same way.
+          log before sending anything. Shareference itself is packaged to run as a Tinfoil Container, so the router and vault can be attested the same way.
         </p>
       </div>
 
@@ -74,7 +74,7 @@ export default function VerifyPage() {
           </tbody>
         </table>
         <ul className="mt-6 space-y-2 text-sm text-mid">
-          <li>· Switchboard stores only usage metadata: token counts, cost, latency, backend. Never prompts or outputs.</li>
+          <li>· Shareference stores only usage metadata: token counts, cost, latency, backend. Never prompts or outputs.</li>
           <li>· Owners&apos; credentials are sealed with AES-256-GCM. Buyers get capped sub-keys; owners see usage counts, never content.</li>
           <li>· Buyers and owners see each other only as random aliases. Payout handles are shown only to the buyer of a specific order.</li>
           <li>· Fallbacks only move to a more private tier, never a less private one.</li>

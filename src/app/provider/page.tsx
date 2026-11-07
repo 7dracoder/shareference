@@ -1,10 +1,10 @@
 import { requireUser } from "@/lib/auth";
 import { listingsByProvider, getListing } from "@/lib/listings";
 import { grantsForProvider, usageSummary } from "@/lib/grants";
-import { pendingForProvider, METHOD_LABEL } from "@/lib/payments";
+import { pendingForProvider, METHOD_LABEL, type PayMethod } from "@/lib/payments";
 import { SERVICE_POLICIES } from "@/lib/policy";
 import { feePercent, formatCents, formatUsd } from "@/lib/pricing";
-import { aliasOf, hasPayoutMethod } from "@/lib/users";
+import { aliasFrom, aliasMap, hasPayoutMethod } from "@/lib/users";
 import { ActionForm } from "@/components/action-form";
 import { ListingForm } from "@/components/listing-form";
 import { LimitsForm } from "@/components/limits-form";
@@ -19,9 +19,16 @@ import {
 
 export default async function ProviderPage() {
   const user = await requireUser();
-  const listings = listingsByProvider(user.id);
-  const grants = grantsForProvider(user.id).filter((g) => g.status === "active" || g.status === "pending_assignment");
-  const pending = pendingForProvider(user.id);
+  const [listings, allGrants, pending] = await Promise.all([
+    listingsByProvider(user.id),
+    grantsForProvider(user.id),
+    pendingForProvider(user.id),
+  ]);
+  const grants = allGrants.filter((g) => g.status === "active" || g.status === "pending_assignment");
+  const [details, aliases] = await Promise.all([
+    Promise.all(grants.map(async (g) => ({ grant: g, listing: await getListing(g.listingId), usage: await usageSummary(g.id) }))),
+    aliasMap([...grants.map((g) => g.buyerId), ...pending.map((p) => p.buyerId)]),
+  ]);
   const pm = user.payoutMethods;
   const services = SERVICE_POLICIES.filter((s) => s.rule !== "forbidden").map((s) => ({ id: s.id, name: s.name, kinds: s.kinds, note: s.note }));
 
@@ -31,7 +38,7 @@ export default async function ProviderPage() {
         <p className="kicker">Sell</p>
         <h1 className="mt-3 font-mono text-3xl">Share access, keep control</h1>
         <p className="mt-3 max-w-2xl text-mid">
-          Buyers pay you directly. Switchboard takes {feePercent()}, which buyers also send directly. Your credentials stay sealed; buyers see only your alias{" "}
+          Buyers pay you directly. Shareference takes {feePercent()}, which buyers also send directly. Your credentials stay sealed; buyers see only your alias{" "}
           <span className="pill">{user.alias}</span>.
         </p>
       </div>
@@ -43,7 +50,7 @@ export default async function ProviderPage() {
           <ActionForm action={savePayoutAction} submitLabel="Save payout details">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block"><span className="label">Zelle email or phone</span><input className="input" name="zelle" defaultValue={pm.zelle} /></label>
-              <label className="block"><span className="label">Name on Zelle account</span><input className="input" name="zelleName" defaultValue={pm.zelleName} /></label>
+              <label className="block"><span className="label">Display name for Zelle</span><input className="input" name="zelleName" defaultValue={pm.zelleName} /></label>
               <label className="block"><span className="label">Venmo @handle</span><input className="input" name="venmo" defaultValue={pm.venmo} /></label>
               <label className="block"><span className="label">Cash App $cashtag</span><input className="input" name="cashapp" defaultValue={pm.cashapp} /></label>
               <label className="block"><span className="label">PayPal email</span><input className="input" name="paypal" defaultValue={pm.paypal} /></label>
@@ -61,8 +68,8 @@ export default async function ProviderPage() {
             {pending.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <span className="font-mono">{p.reference}</span>
-                <span>{aliasOf(p.buyerId)}</span>
-                <span>{formatCents(p.providerCents)} via {p.method === "demo" ? "demo" : METHOD_LABEL[p.method]}</span>
+                <span>{aliasFrom(aliases, p.buyerId)}</span>
+                <span>{formatCents(p.providerCents)} via {METHOD_LABEL[p.method as PayMethod]}</span>
                 <span className="text-low">{p.status === "buyer_marked_sent" ? "buyer says sent" : "not sent yet"}</span>
                 <form action={confirmReceiptAction}>
                   <input type="hidden" name="paymentId" value={p.id} />
@@ -76,54 +83,50 @@ export default async function ProviderPage() {
 
       <section>
         <h2 className="kicker">Active grants on your listings</h2>
-        {grants.length === 0 ? (
+        {details.length === 0 ? (
           <p className="mt-3 text-sm text-mid">No active buyers yet.</p>
         ) : (
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            {grants.map((g) => {
-              const listing = getListing(g.listingId);
-              const usage = usageSummary(g.id);
-              return (
-                <article key={g.id} className="card space-y-3">
-                  <div className="flex justify-between gap-3">
-                    <div>
-                      <h3 className="font-medium">{listing?.title}</h3>
-                      <p className="font-mono text-xs text-low">buyer: {aliasOf(g.buyerId)}</p>
-                    </div>
-                    <span className="font-mono text-xs uppercase text-mid">{g.status.replace("_", " ")}</span>
+            {details.map(({ grant: g, listing, usage }) => (
+              <article key={g.id} className="card space-y-3">
+                <div className="flex justify-between gap-3">
+                  <div>
+                    <h3 className="font-medium">{listing?.title}</h3>
+                    <p className="font-mono text-xs text-low">buyer: {aliasFrom(aliases, g.buyerId)}</p>
                   </div>
-                  {listing?.kind === "seat" ? (
-                    g.status === "pending_assignment" ? (
-                      <form action={assignSeatAction} className="space-y-2">
-                        <p className="text-sm text-mid">Assign a {listing.service} seat to the buyer in the vendor&apos;s admin console, then start the timer.</p>
-                        <input type="hidden" name="grantId" value={g.id} />
-                        <button className="btn" type="submit">Seat assigned, start {listing.seatMinutes} min timer</button>
-                      </form>
-                    ) : (
-                      <p className="text-sm text-mid">Ends {g.expiresAt ? new Date(g.expiresAt).toLocaleString() : "—"}. You&apos;ll be reminded to unassign it.</p>
-                    )
+                  <span className="font-mono text-xs uppercase text-mid">{g.status.replace("_", " ")}</span>
+                </div>
+                {listing?.kind === "seat" ? (
+                  g.status === "pending_assignment" ? (
+                    <form action={assignSeatAction} className="space-y-2">
+                      <p className="text-sm text-mid">Assign a {listing.service} seat to the buyer in the vendor&apos;s admin console, then start the timer.</p>
+                      <input type="hidden" name="grantId" value={g.id} />
+                      <button className="btn" type="submit">Seat assigned, start {listing.seatMinutes} min timer</button>
+                    </form>
                   ) : (
-                    <>
-                      <p className="font-mono text-xs text-mid">
-                        {formatUsd(g.spentMicros)} of {formatUsd(g.budgetMicros)} · {usage.requests} requests · {usage.blocked} blocked. Prompts are never visible to you.
-                      </p>
-                      <LimitsForm
-                        grantId={g.id}
-                        maxRpm={g.maxRpm}
-                        maxTokensPerRequest={g.maxTokensPerRequest}
-                        privacyFloor={g.privacyFloor}
-                        expiresAt={g.expiresAt}
-                        showPrivacy={false}
-                      />
-                    </>
-                  )}
-                  <form action={revokeAction}>
-                    <input type="hidden" name="grantId" value={g.id} />
-                    <button className="btn-danger" type="submit">Revoke now</button>
-                  </form>
-                </article>
-              );
-            })}
+                    <p className="text-sm text-mid">Ends {g.expiresAt ? new Date(g.expiresAt).toLocaleString() : "—"}. You&apos;ll be reminded to unassign it.</p>
+                  )
+                ) : (
+                  <>
+                    <p className="font-mono text-xs text-mid">
+                      {formatUsd(g.spentMicros)} of {formatUsd(g.budgetMicros)} · {usage.requests} requests · {usage.blocked} blocked. Prompts are never visible to you.
+                    </p>
+                    <LimitsForm
+                      grantId={g.id}
+                      maxRpm={g.maxRpm}
+                      maxTokensPerRequest={g.maxTokensPerRequest}
+                      privacyFloor={g.privacyFloor}
+                      expiresAt={g.expiresAt}
+                      showPrivacy={false}
+                    />
+                  </>
+                )}
+                <form action={revokeAction}>
+                  <input type="hidden" name="grantId" value={g.id} />
+                  <button className="btn-danger" type="submit">Revoke now</button>
+                </form>
+              </article>
+            ))}
           </div>
         )}
       </section>

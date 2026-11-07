@@ -1,4 +1,4 @@
-# Tinfoil Container config: runs Switchboard (router + credential vault) inside
+# Tinfoil Container config: runs Shareference (router + credential vault) inside
 # an attested enclave so users can verify the exact code that handles their data.
 # Steps: push this repo to a PUBLIC GitHub repo, build/push the Docker image,
 # replace the digest below, then run the Tinfoil release workflow.
@@ -7,8 +7,8 @@ cvm-version: 0.14.7
 cpus: 2
 memory: 8192
 containers:
-  - name: "switchboard"
-    image: "ghcr.io/REPLACE_ME/switchboard@sha256:REPLACE_WITH_REAL_DIGEST"
+  - name: "shareference"
+    image: "ghcr.io/REPLACE_ME/shareference@sha256:REPLACE_WITH_REAL_DIGEST"
     env:
       - NODE_ENV: "production"
       - PORT: "8080"

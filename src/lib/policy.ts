@@ -2,7 +2,7 @@ import "server-only";
 
 /**
  * Policy registry: which services allow shared access, and how.
- * Switchboard refuses listings that would break a vendor's terms.
+ * Shareference refuses listings that would break a vendor's terms.
  * Review vendor terms before adding entries; this list is a starting point.
  */
 export type SharingRule = "api_org" | "team_seat" | "forbidden";
@@ -41,7 +41,7 @@ export const SERVICE_POLICIES: readonly ServicePolicy[] = [
     id: "canva-teams",
     name: "Canva Teams seat",
     rule: "team_seat",
-    note: "Team plan seats only. The owner assigns the seat in Canva's admin console; Switchboard tracks time and reclaims it.",
+    note: "Team plan seats only. The owner assigns the seat in Canva's admin console; Shareference tracks time and reclaims it.",
     kinds: ["seat"],
   },
   {

@@ -31,7 +31,7 @@ export function Playground() {
     const started = performance.now();
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${key.trim()}` };
-      if (tier !== "auto") headers["x-switchboard-tier"] = tier;
+      if (tier !== "auto") headers["x-shareference-tier"] = tier;
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
         headers,
@@ -40,8 +40,8 @@ export function Playground() {
       const body: unknown = await res.json().catch(() => ({ error: { message: "Non-JSON response" } }));
       setResult({
         status: res.status,
-        backend: res.headers.get("x-switchboard-backend"),
-        tier: res.headers.get("x-switchboard-tier"),
+        backend: res.headers.get("x-shareference-backend"),
+        tier: res.headers.get("x-shareference-tier"),
         text: extractText(body),
         ms: Math.round(performance.now() - started),
       });
@@ -56,8 +56,8 @@ export function Playground() {
     <div className="grid gap-4 lg:grid-cols-2">
       <form onSubmit={send} className="card space-y-4">
         <label className="block">
-          <span className="label">Switchboard key</span>
-          <input className="input font-mono" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sb_…" required autoComplete="off" />
+          <span className="label">Shareference key</span>
+          <input className="input font-mono" value={key} onChange={(e) => setKey(e.target.value)} placeholder="shr_…" required autoComplete="off" />
         </label>
         <label className="block">
           <span className="label">Tier (pool keys)</span>

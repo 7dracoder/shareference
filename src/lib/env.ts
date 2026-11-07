@@ -76,7 +76,7 @@ function load(): Env {
 
 export const env: Env = load();
 
-export const dataDir: string = env.DATA_DIR ?? path.join(os.homedir(), ".switchboard");
+export const dataDir: string = env.DATA_DIR ?? path.join(os.homedir(), ".shareference");
 
 export interface IntegrationStatus {
   bankPayouts: boolean;

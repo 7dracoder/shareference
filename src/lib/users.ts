@@ -103,7 +103,7 @@ export function hasPayoutMethod(methods: PayoutMethods): boolean {
 }
 
 export async function aliasOf(userId: string | null): Promise<string> {
-  if (!userId) return "Switchboard";
+  if (!userId) return "Shareference";
   const row = await db.get<{ alias: string }>("SELECT alias FROM users WHERE id = ?", [userId]);
   return row?.alias ?? "unknown";
 }
@@ -120,5 +120,5 @@ export async function aliasMap(ids: Array<string | null>): Promise<Map<string, s
 }
 
 export function aliasFrom(map: Map<string, string>, id: string | null): string {
-  return id ? (map.get(id) ?? "unknown") : "Switchboard";
+  return id ? (map.get(id) ?? "unknown") : "Shareference";
 }

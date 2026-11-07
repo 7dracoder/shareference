@@ -66,7 +66,7 @@ function toListing(row: ListingRow): Listing {
   return {
     id: row.id,
     providerId: row.provider_id,
-    providerAlias: row.provider_id ? (row.provider_alias ?? "unknown") : "Switchboard",
+    providerAlias: row.provider_id ? (row.provider_alias ?? "unknown") : "Shareference",
     kind: row.kind,
     service: row.service,
     title: row.title,
@@ -88,17 +88,17 @@ function toListing(row: ListingRow): Listing {
 
 let poolEnsured = false;
 
-/** The platform-owned inference pool. Seller is Switchboard itself. */
+/** The platform-owned inference pool. Seller is Shareference itself. */
 async function ensurePoolListing(): Promise<void> {
   if (poolEnsured) return;
   await db.run(
     `INSERT INTO listings
       (id, provider_id, kind, service, title, description, features, models, min_purchase_cents, max_rpm, max_tokens_per_request, status, created_at)
-     VALUES (?, NULL, 'pool', 'switchboard-pool', ?, ?, ?, '[]', 500, 120, 8000, 'active', ?)
+     VALUES (?, NULL, 'pool', 'shareference-pool', ?, ?, ?, '[]', 500, 120, 8000, 'active', ?)
      ON CONFLICT (id) DO NOTHING`,
     [
       POOL_LISTING_ID,
-      "Switchboard private inference pool",
+      "Shareference private inference pool",
       "One OpenAI-compatible key. Requests are routed to Superlinked SIE (fast), Darkbloom (private) or Tinfoil (verified) by cost and privacy. Requests containing personal data are upgraded to the verified tier automatically.",
       JSON.stringify(["chat", "embeddings", "rerank"]),
       now(),

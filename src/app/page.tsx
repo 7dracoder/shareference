@@ -16,7 +16,7 @@ const STEPS = [
   },
   {
     title: "Money goes straight to people",
-    body: `Buyers pay the provider directly by Zelle, Venmo, Cash App, PayPal or USDC. ${feePercent()} goes directly to the platform. Switchboard never holds funds.`,
+    body: `Buyers pay the provider directly by Zelle, Venmo, Cash App, PayPal or USDC. ${feePercent()} goes directly to the platform. Shareference never holds funds.`,
   },
 ];
 
@@ -36,7 +36,7 @@ export default function Home() {
           Share AI and tool access <span className="text-acid">without sharing accounts.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-mid">
-          Switchboard is a private inference pool and a marketplace for limited, revocable access. One OpenAI-compatible key, routed
+          Shareference is a private inference pool and a marketplace for limited, revocable access. One OpenAI-compatible key, routed
           by cost and privacy. Owners set the limits; buyers get only what they paid for.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
@@ -93,9 +93,9 @@ export default function Home() {
 
       <section className="card">
         <h2 className="kicker">Use it from any OpenAI client</h2>
-        <pre className="code mt-4">{`curl ${"$"}SWITCHBOARD_URL/api/v1/chat/completions \\
-  -H "Authorization: Bearer sb_..." \\
-  -H "x-switchboard-tier: private" \\
+        <pre className="code mt-4">{`curl ${"$"}SHAREFERENCE_URL/api/v1/chat/completions \\
+  -H "Authorization: Bearer shr_..." \\
+  -H "x-shareference-tier: private" \\
   -d '{"messages":[{"role":"user","content":"hello"}]}'`}</pre>
       </section>
     </div>

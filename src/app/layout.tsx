@@ -5,7 +5,7 @@ import { Nav } from "@/components/nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Switchboard: share AI and tool access without sharing accounts",
+  title: "Shareference: share AI and tool access without sharing accounts",
   description:
     "Private inference pool and capability-scoped account sharing. Buy and sell limited access; credentials never leave the vault.",
 };
@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </Suspense>
         <main className="mx-auto w-full max-w-6xl px-5 py-10">{children}</main>
         <footer className="mx-auto max-w-6xl px-5 pb-10 pt-6 font-mono text-xs text-low">
-          Switchboard · built at LOCALHOST NYC on Darkbloom, Tinfoil, Superlinked SIE and cognee. Money goes directly to recipients.
+          Shareference · built at LOCALHOST NYC on Darkbloom, Tinfoil, Superlinked SIE and cognee. Money goes directly to recipients.
         </footer>
       </body>
     </html>

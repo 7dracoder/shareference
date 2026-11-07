@@ -38,7 +38,7 @@ export interface UsdcCheck {
 /**
  * Verifies that the given transactions contain USDC transfers from the buyer's
  * wallet covering every leg (provider share + platform fee), mined after the
- * order was created. Switchboard never receives or holds these funds.
+ * order was created. Shareference never receives or holds these funds.
  */
 export async function verifyUsdcPayment(hashes: Hash[], payer: string, legs: Leg[], orderCreatedAt: number): Promise<UsdcCheck> {
   const usdc = getAddress(USDC_ADDRESS[env.USDC_NETWORK]);
