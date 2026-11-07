@@ -9,7 +9,7 @@ const WAYS = [
 
 const BUYING = [
   "Pick a listing and see the price, limits and models up front.",
-  "Pay the owner directly with Zelle, Venmo, PayPal, Cash App or USDC. The owner confirms they got it.",
+  "Pay Shareference with Zelle (scan the QR). Once the deposit is confirmed, your key appears.",
   "Get your own key. It works with any app that speaks the OpenAI API, and it stops when your credit or time runs out.",
 ];
 
@@ -20,7 +20,7 @@ export default function Home() {
         <h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Rent out the AI access you aren&apos;t using.</h1>
         <p className="mt-5 text-lg leading-relaxed text-mid">
           Spare API credit, an empty team seat, or a computer that sits idle with local models on it. List it, set a price and limits,
-          and people pay you directly to use it. They get their own key, never your login.
+          and people pay Shareference to use it. They get their own key, never your login. You get paid after each sale.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link href="/marketplace" className="btn">Browse listings</Link>

@@ -15,11 +15,11 @@ import { agentLog } from "./agents/log";
 import { verifyUsdcPayment } from "./integrations/usdc";
 
 /**
- * Direct payments, no middleman:
- *   buyer -> provider's own Zelle/Venmo/Cash App/PayPal/USDC   (90%)
- *   buyer -> platform's own Zelle/…/USDC                       (10% fee)
- * Each recipient confirms receipt (or the chain does, for USDC).
- * Access is issued only once every leg is confirmed.
+ * Money flow:
+ *   1. Buyer pays the full amount to the platform (Zelle QR on the order page).
+ *   2. Admin confirms the deposit → access is issued.
+ *   3. Admin sends the provider their share from the platform account, then marks it paid.
+ * Buyers never see the provider's payout handle.
  */
 export type PayMethod = "zelle" | "venmo" | "cashapp" | "paypal" | "usdc";
 export const PAY_METHODS: readonly PayMethod[] = ["zelle", "venmo", "cashapp", "paypal", "usdc"] as const;
@@ -95,7 +95,7 @@ function toPayment(r: PaymentRow): Payment {
   };
 }
 
-/** The platform's own payout handles, from env. This is where your 10% lands. */
+/** The platform's own payout handles, from env. Buyers pay here; providers are paid from here. */
 export function platformPayoutMethods(): PayoutMethods {
   return {
     zelle: env.PLATFORM_ZELLE,
@@ -111,22 +111,22 @@ function handleFor(methods: PayoutMethods, method: PayMethod): string | undefine
   return methods[method];
 }
 
-/** Methods the platform can take its fee with. Providers can only be paid through these. */
+/** Methods the platform can collect with. Checkout currently surfaces Zelle first. */
 export function acceptedMethods(): PayMethod[] {
   const platform = platformPayoutMethods();
   return PAY_METHODS.filter((m) => (env.PLATFORM_FEE_BPS === 0 || handleFor(platform, m)) && (m !== "usdc" || env.NODE_ENV !== "production" || env.USDC_NETWORK === "base"));
 }
 
-/** True when the provider has at least one handle buyers can actually pay. */
+/** True when the provider has at least one handle the platform can pay out to. */
 export function canReceivePayments(methods: PayoutMethods): boolean {
   return acceptedMethods().some((m) => handleFor(methods, m));
 }
 
-/** Methods a buyer can use for this listing: both provider AND platform must accept it. */
+/** Methods a buyer can use: platform must accept it. Provider handles are never shown to buyers. */
 export async function availableMethods(listing: Listing): Promise<PayMethod[]> {
-  const platform = platformPayoutMethods();
-  const provider = listing.providerId ? ((await getUserById(listing.providerId))?.payoutMethods ?? {}) : platform;
-  return acceptedMethods().filter((m) => (listing.providerId || handleFor(platform, m)) && handleFor(provider, m));
+  void listing;
+  // Zelle is the supported buyer path (QR on the order page). Other platform methods stay available for admin payouts.
+  return acceptedMethods().filter((m) => m === "zelle" || m === "usdc");
 }
 
 export interface PayLeg {
@@ -138,38 +138,52 @@ export interface PayLeg {
   confirmed: boolean;
 }
 
-/** What the buyer must send, to whom. Only shown to the buyer of this order. */
+/** Snapshot of where the buyer should send money: the platform only, for the full amount. */
+export function platformCollectionLeg(payment: Payment): PayLeg | null {
+  if (payment.method === "demo") return null;
+  const platform = platformPayoutMethods();
+  const handle = handleFor(platform, payment.method as PayMethod);
+  if (!handle) return null;
+  return {
+    recipient: "platform",
+    label: "Shareference",
+    handle,
+    holderName: payment.method === "zelle" ? platform.zelleName : undefined,
+    cents: payment.grossCents,
+    confirmed: payment.feeConfirmedAt !== null,
+  };
+}
+
+/** @deprecated Prefer platformCollectionLeg. Kept for older tests that read payment_legs. */
 export async function paymentLegs(payment: Payment): Promise<PayLeg[]> {
   if (payment.method === "demo") return [];
   const stored = await db.get<{ payment_legs: string | null }>("SELECT payment_legs FROM payments WHERE id = ?", [payment.id]);
   if (stored?.payment_legs) {
     const legs = JSON.parse(stored.payment_legs) as PayLeg[];
-    return legs.map((leg) => ({ ...leg, confirmed: leg.recipient === "provider" ? payment.providerConfirmedAt !== null : payment.feeConfirmedAt !== null }));
+    // New orders store a single platform leg for the full amount.
+    if (legs.length === 1 && legs[0]?.recipient === "platform") {
+      return [{ ...legs[0], cents: payment.grossCents, confirmed: payment.feeConfirmedAt !== null }];
+    }
   }
-  const method = payment.method;
-  const platform = platformPayoutMethods();
-  const legs: PayLeg[] = [];
-  if (payment.providerId && payment.providerCents > 0) {
-    const provider = await getUserById(payment.providerId);
-    const pm = provider?.payoutMethods ?? {};
-    legs.push({
-      recipient: "provider",
-      label: `Provider (${provider?.alias ?? "unknown"})`,
-      handle: handleFor(pm, method) ?? "",
-      holderName: method === "zelle" ? pm.zelleName : undefined,
-      cents: payment.providerCents,
-      confirmed: payment.providerConfirmedAt !== null,
-    });
-  }
-  if (payment.feeCents > 0) legs.push({
-    recipient: "platform",
-    label: payment.providerId ? "Shareference platform fee" : "Shareference",
-    handle: handleFor(platform, method) ?? "",
-    holderName: method === "zelle" ? platform.zelleName : undefined,
-    cents: payment.feeCents,
-    confirmed: payment.feeConfirmedAt !== null,
-  });
-  return legs;
+  const leg = platformCollectionLeg(payment);
+  return leg ? [leg] : [];
+}
+
+/** Admin-only: how to pay the provider their share after the buyer deposit clears. */
+export async function providerPayoutDetails(payment: Payment): Promise<{ method: PayMethod; handle: string; holderName?: string; cents: number; alias: string } | null> {
+  if (!payment.providerId || payment.providerCents <= 0) return null;
+  const provider = await getUserById(payment.providerId);
+  if (!provider) return null;
+  const pm = provider.payoutMethods;
+  const method = (acceptedMethods().find((m) => handleFor(pm, m)) ?? null) as PayMethod | null;
+  if (!method) return null;
+  return {
+    method,
+    handle: handleFor(pm, method)!,
+    holderName: method === "zelle" ? pm.zelleName : undefined,
+    cents: payment.providerCents,
+    alias: provider.alias,
+  };
 }
 
 function newReference(): string {
@@ -202,17 +216,23 @@ export async function createOrder(listing: Listing, buyer: User, requestedCents:
   if (listing.providerId === buyer.id) return { ok: false, message: "You can't buy your own listing." };
   if (method === "demo" && !env.DEMO_MODE) return { ok: false, message: "Demo payments are disabled." };
   if (method !== "demo" && !(await availableMethods(listing)).includes(method)) {
-    return { ok: false, message: "That payment method isn't available for this listing." };
+    return { ok: false, message: "That payment method isn't available right now." };
+  }
+  if (listing.providerId) {
+    const provider = await getUserById(listing.providerId);
+    if (!provider || !canReceivePayments(provider.payoutMethods)) {
+      return { ok: false, message: "This listing isn't ready to take payments yet." };
+    }
   }
   const gross = purchaseAmountCents(listing, requestedCents);
   const split = splitPayment(gross, listing.providerId === null);
   const id = newId("pay");
   const initial: Payment = { id, reference: newReference(), listingId: listing.id, buyerId: buyer.id, providerId: listing.providerId, ...split, method, status: "awaiting_payment", providerConfirmedAt: null, feeConfirmedAt: null, buyerMarkedAt: null, grantId: null, createdAt: now(), deliveryEmail: options.deliveryEmail ?? null };
-  const legs = await paymentLegs(initial);
+  const leg = platformCollectionLeg(initial);
   await db.run(
     `INSERT INTO payments (id, reference, listing_id, buyer_id, provider_id, gross_cents, fee_cents, provider_cents, method, status, created_at, listing_snapshot, payment_legs, checkout_key, delivery_email)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?, ?, ?, ?) ON CONFLICT (buyer_id, checkout_key) DO NOTHING`,
-    [id, initial.reference, listing.id, buyer.id, listing.providerId, split.grossCents, split.feeCents, split.providerCents, method, initial.createdAt, JSON.stringify(listing), JSON.stringify(legs), options.checkoutKey ?? null, options.deliveryEmail ?? null],
+    [id, initial.reference, listing.id, buyer.id, listing.providerId, split.grossCents, split.feeCents, split.providerCents, method, initial.createdAt, JSON.stringify(listing), leg ? JSON.stringify([leg]) : null, options.checkoutKey ?? null, options.deliveryEmail ?? null],
   );
   const savedId = options.checkoutKey ? (await db.get<{ id: string }>("SELECT id FROM payments WHERE buyer_id = ? AND checkout_key = ?", [buyer.id, options.checkoutKey]))?.id ?? id : id;
   if (method === "demo") await completeIfReady(savedId, { forceDemo: true });
@@ -229,21 +249,32 @@ export async function paymentsForBuyer(buyerId: string): Promise<Payment[]> {
   return rows.map(toPayment);
 }
 
-/** Orders where this provider still has to confirm their share arrived. */
-export async function pendingForProvider(providerId: string): Promise<Payment[]> {
+/** Provider view: payouts the platform still owes them (access may already be live). */
+export async function pendingPayoutsForProvider(providerId: string): Promise<Payment[]> {
   const rows = await db.all<PaymentRow>(
-    `SELECT * FROM payments WHERE provider_id = ? AND status IN ('awaiting_payment','buyer_marked_sent')
-     AND provider_confirmed_at IS NULL AND method NOT IN ('usdc','demo') ORDER BY created_at DESC`,
+    `SELECT * FROM payments WHERE provider_id = ? AND status = 'completed'
+     AND provider_cents > 0 AND provider_confirmed_at IS NULL AND method != 'demo'
+     ORDER BY created_at DESC`,
     [providerId],
   );
   return rows.map(toPayment);
 }
 
-/** Orders where the platform (you) still has to confirm the fee arrived. */
+/** Orders where the platform still has to confirm the buyer's Zelle deposit. */
 export async function pendingForPlatform(): Promise<Payment[]> {
   const rows = await db.all<PaymentRow>(
     `SELECT * FROM payments WHERE status IN ('awaiting_payment','buyer_marked_sent')
      AND fee_confirmed_at IS NULL AND method NOT IN ('usdc','demo') ORDER BY created_at DESC`,
+  );
+  return rows.map(toPayment);
+}
+
+/** Completed sales where the admin still needs to send the provider their share. */
+export async function pendingProviderPayouts(): Promise<Payment[]> {
+  const rows = await db.all<PaymentRow>(
+    `SELECT * FROM payments WHERE status = 'completed' AND provider_id IS NOT NULL
+     AND provider_cents > 0 AND provider_confirmed_at IS NULL AND method != 'demo'
+     ORDER BY created_at DESC`,
   );
   return rows.map(toPayment);
 }
@@ -259,7 +290,7 @@ export async function markSent(paymentId: string, buyerId: string): Promise<bool
       await agentLog(
         "finance",
         "buyer marked sent",
-        `${await aliasOf(buyerId)} says they sent ${formatCents(p.grossCents)} for ${p.reference}. Waiting for recipients to confirm.`,
+        `${await aliasOf(buyerId)} says they sent ${formatCents(p.grossCents)} for ${p.reference}. Waiting for Shareference to confirm.`,
       );
     }
   }
@@ -275,22 +306,7 @@ export async function cancelOrder(paymentId: string, buyerId: string): Promise<b
   return changes > 0;
 }
 
-/** Provider confirms their share arrived in their own account. */
-export async function confirmProviderReceipt(paymentId: string, providerId: string): Promise<boolean> {
-  const changes = await db.run(
-    `UPDATE payments SET provider_confirmed_at = ? WHERE id = ? AND provider_id = ? AND provider_confirmed_at IS NULL
-     AND status IN ('awaiting_payment','buyer_marked_sent')`,
-    [now(), paymentId, providerId],
-  );
-  if (changes > 0) {
-    const p = await getPayment(paymentId);
-    await agentLog("finance", "provider confirmed", `${await aliasOf(providerId)} confirmed receipt for ${p?.reference ?? paymentId}.`);
-  }
-  await completeIfReady(paymentId);
-  return changes > 0;
-}
-
-/** Platform admin confirms the 10% fee (or full pool price) arrived in their bank. */
+/** Admin confirms the buyer's full payment arrived → access is issued. */
 export async function confirmPlatformReceipt(paymentId: string, admin: User): Promise<boolean> {
   if (!admin.isAdmin) return false;
   const changes = await db.run(
@@ -299,10 +315,35 @@ export async function confirmPlatformReceipt(paymentId: string, admin: User): Pr
   );
   if (changes > 0) {
     const p = await getPayment(paymentId);
-    await agentLog("finance", "fee confirmed", `Platform fee confirmed for ${p?.reference ?? paymentId}.`);
+    await agentLog("finance", "payment received", `Shareference confirmed ${formatCents(p?.grossCents ?? 0)} for ${p?.reference ?? paymentId}.`);
   }
   await completeIfReady(paymentId);
   return changes > 0;
+}
+
+/** Admin marks that the provider's share was sent from the platform account. */
+export async function markProviderPaid(paymentId: string, admin: User): Promise<boolean> {
+  if (!admin.isAdmin) return false;
+  const changes = await db.run(
+    `UPDATE payments SET provider_confirmed_at = ? WHERE id = ? AND provider_id IS NOT NULL
+     AND provider_cents > 0 AND provider_confirmed_at IS NULL AND status = 'completed'`,
+    [now(), paymentId],
+  );
+  if (changes > 0) {
+    const p = await getPayment(paymentId);
+    if (p?.providerId) {
+      await agentLog("finance", "provider paid", `Paid ${formatCents(p.providerCents)} to ${await aliasOf(p.providerId)} for ${p.reference}.`);
+    }
+  }
+  return changes > 0;
+}
+
+/** @deprecated Use markProviderPaid. Kept so older scripts keep compiling until removed. */
+export async function confirmProviderReceipt(paymentId: string, providerId: string): Promise<boolean> {
+  // Providers no longer confirm buyer transfers. Ignore and do not unlock access.
+  void paymentId;
+  void providerId;
+  return false;
 }
 
 async function completeIfReady(paymentId: string, opts: { forceDemo?: boolean } = {}): Promise<void> {
@@ -310,10 +351,9 @@ async function completeIfReady(paymentId: string, opts: { forceDemo?: boolean } 
     const row = await t.get<PaymentRow>("SELECT * FROM payments WHERE id = ? FOR UPDATE", [paymentId]);
     if (!row || row.status === "completed" || row.status === "canceled") return null;
     const p = toPayment(row);
-    const providerOk = !p.providerId || p.providerCents === 0 || p.providerConfirmedAt !== null;
-    const feeOk = p.feeCents === 0 || p.feeConfirmedAt !== null;
     const demo = opts.forceDemo && p.method === "demo" && env.DEMO_MODE;
-    if (!demo && !(providerOk && feeOk)) return null;
+    // Access unlocks when the platform has the buyer's money. Paying the provider is a later admin step.
+    if (!demo && p.feeConfirmedAt === null) return null;
     const listing = row.listing_snapshot ? JSON.parse(row.listing_snapshot) as Listing : await getListing(p.listingId);
     if (!listing) throw new Error("Order listing is missing");
     const grantId = await createGrantFromPurchase(listing, p.buyerId, p.grossCents, t);
@@ -323,8 +363,6 @@ async function completeIfReady(paymentId: string, opts: { forceDemo?: boolean } 
   });
   if (!context) return;
   const { p, listing } = context;
-  const issued = true;
-  if (!issued) return;
 
   const [buyerAlias, providerAlias] = await Promise.all([aliasOf(p.buyerId), aliasOf(p.providerId)]);
   await agentLog(
@@ -332,8 +370,8 @@ async function completeIfReady(paymentId: string, opts: { forceDemo?: boolean } 
     opts.forceDemo ? "demo payment" : "payment completed",
     `${buyerAlias} paid ${formatCents(p.grossCents)} for "${listing.title}" (${p.reference}). ` +
       (p.providerId
-        ? `${formatCents(p.providerCents)} went directly to ${providerAlias}, ${formatCents(p.feeCents)} platform fee.`
-        : `${formatCents(p.feeCents)} went directly to Shareference.`),
+        ? `Access issued. ${formatCents(p.providerCents)} still owed to ${providerAlias}; platform keeps ${formatCents(p.feeCents)}.`
+        : `Access issued. ${formatCents(p.grossCents)} to Shareference.`),
   );
   if (listing.kind === "seat") {
     await agentLog("enforcer", "seat requested", `${buyerAlias} bought ${listing.seatMinutes} min of ${listing.service}. Waiting for ${providerAlias} to assign the seat.`);
@@ -342,7 +380,7 @@ async function completeIfReady(paymentId: string, opts: { forceDemo?: boolean } 
 
 export type UsdcSubmitResult = { ok: boolean; message: string };
 
-/** Buyer submits tx hashes; we verify the transfers on-chain and complete instantly. */
+/** Buyer submits tx hashes; we verify a single transfer of the full amount to the platform. */
 export async function submitUsdcPayment(paymentId: string, buyerId: string, payer: string, hashes: Hash[]): Promise<UsdcSubmitResult> {
   const p = await getPayment(paymentId);
   if (!p || p.buyerId !== buyerId) return { ok: false, message: "Order not found." };
@@ -356,8 +394,9 @@ export async function submitUsdcPayment(paymentId: string, buyerId: string, paye
     }
   }
 
-  const legs = (await paymentLegs(p)).map((l) => ({ to: l.handle, cents: l.cents }));
-  const check = await verifyUsdcPayment(hashes, payer, legs, p.createdAt);
+  const leg = platformCollectionLeg(p);
+  if (!leg) return { ok: false, message: "USDC payouts aren't configured." };
+  const check = await verifyUsdcPayment(hashes, payer, [{ to: leg.handle, cents: leg.cents }], p.createdAt);
   if (!check.ok) return check;
 
   const ts = now();
@@ -368,7 +407,7 @@ export async function submitUsdcPayment(paymentId: string, buyerId: string, paye
       for (const h of hashes) {
         await t.run("INSERT INTO used_tx (tx_hash, payment_id, created_at) VALUES (?, ?, ?)", [h.toLowerCase(), p.id, ts]);
       }
-      await t.run("UPDATE payments SET payer_wallet = ?, provider_confirmed_at = ?, fee_confirmed_at = ? WHERE id = ?", [payer, ts, ts, p.id]);
+      await t.run("UPDATE payments SET payer_wallet = ?, fee_confirmed_at = ? WHERE id = ?", [payer, ts, p.id]);
     });
   } catch {
     return { ok: false, message: "That transaction was just used for another order." };
@@ -385,10 +424,11 @@ export interface RevenueSummary {
   pending: number;
   demoOrders: number;
   buyers: number;
+  unpaidProviders: number;
 }
 
 export async function revenueSummary(): Promise<RevenueSummary> {
-  const [real, pending, demo] = await Promise.all([
+  const [real, pending, demo, unpaid] = await Promise.all([
     db.get<{ orders: number; gross: number; fee: number; provider: number; buyers: number }>(
       `SELECT COUNT(*) AS orders, COALESCE(SUM(gross_cents),0) AS gross, COALESCE(SUM(fee_cents),0) AS fee,
               COALESCE(SUM(provider_cents),0) AS provider, COUNT(DISTINCT buyer_id) AS buyers
@@ -396,6 +436,7 @@ export async function revenueSummary(): Promise<RevenueSummary> {
     ),
     db.get<{ n: number }>("SELECT COUNT(*) AS n FROM payments WHERE status IN ('awaiting_payment','buyer_marked_sent')"),
     db.get<{ n: number }>("SELECT COUNT(*) AS n FROM payments WHERE status = 'completed' AND method = 'demo'"),
+    db.get<{ n: number }>("SELECT COUNT(*) AS n FROM payments WHERE status = 'completed' AND provider_cents > 0 AND provider_confirmed_at IS NULL AND method != 'demo'"),
   ]);
   return {
     grossCents: real?.gross ?? 0,
@@ -405,5 +446,6 @@ export async function revenueSummary(): Promise<RevenueSummary> {
     pending: pending?.n ?? 0,
     demoOrders: demo?.n ?? 0,
     buyers: real?.buyers ?? 0,
+    unpaidProviders: unpaid?.n ?? 0,
   };
 }

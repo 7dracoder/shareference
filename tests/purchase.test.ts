@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../src/lib/db";
 import { createUser, setPayoutMethods, syncClerkUser } from "../src/lib/users";
 import { createListing, getListing, type Listing } from "../src/lib/listings";
-import { createOrder, getPayment, markSent, confirmProviderReceipt, confirmPlatformReceipt, paymentLegs, cancelOrder } from "../src/lib/payments";
+import { createOrder, getPayment, markSent, confirmPlatformReceipt, markProviderPaid, paymentLegs, cancelOrder } from "../src/lib/payments";
 import { getGrant, revealKey, recordUsage, revokeGrant, updateLimits, activateSeat } from "../src/lib/grants";
 import { reserveBudget } from "../src/lib/billing";
 import { authorize, checkOrBlock } from "../src/lib/api";
@@ -21,27 +21,32 @@ test("purchase, settlement, ownership, seat delivery and concurrent budgets", { 
   const buyer = await createUser(`buyer-${tag}@example.test`, "Test getter", randomUUID());
   const stranger = await createUser(`stranger-${tag}@example.test`, "Other getter", randomUUID());
   const admin = { ...buyer, isAdmin: true };
-  await setPayoutMethods(provider.id, { zelle: "provider@example.test" });
+  await setPayoutMethods(provider.id, { zelle: "provider@example.test", zelleName: "Provider Test" });
   const input = { kind: "api_key" as const, service: "openai-compatible", title: "Test API", description: "A test-only API listing", features: ["chat"], models: ["test-model"], pricePer1kMicros: 1000, seatPriceCents: 0, seatMinutes: 0, minPurchaseCents: 500, maxRpm: 60, maxTokensPerRequest: 4000, upstreamBaseUrl: "https://api.openai.com/v1", credential: "test-only-placeholder" };
   const result = await createListing(provider.id, input); assert.equal(result.ok, true);
   const listing = await getListing(result.listingId!) as Listing; assert.ok(listing);
   let paymentId = "", grantId = "";
-  await t.test("duplicate checkout creates one order and freezes payment recipients", async () => {
+  await t.test("duplicate checkout creates one order and buyer only sees the platform collection leg", async () => {
     const checkoutKey = randomUUID();
     const orders = await Promise.all(Array.from({length:5}, () => createOrder(listing, buyer, 500, "zelle", { checkoutKey })));
     assert.ok(orders.every(o => o.ok));
     const ids = orders.map(o => o.ok ? o.paymentId : ""); assert.equal(new Set(ids).size, 1); paymentId = ids[0];
-    await setPayoutMethods(provider.id, { zelle: "changed@example.test" });
     const payment = await getPayment(paymentId); assert.ok(payment);
-    assert.equal((await paymentLegs(payment))[0].handle, "provider@example.test");
+    const legs = await paymentLegs(payment);
+    assert.equal(legs.length, 1);
+    assert.equal(legs[0].recipient, "platform");
+    assert.equal(legs[0].cents, 500);
+    assert.notEqual(legs[0].handle, "provider@example.test");
   });
-  await t.test("only recipients can confirm and both payment legs are required", async () => {
-    assert.equal(await confirmProviderReceipt(paymentId, stranger.id), false);
+  await t.test("admin deposit confirm issues access; provider payout is a later step", async () => {
+    assert.equal(await markProviderPaid(paymentId, stranger), false);
     await markSent(paymentId, buyer.id); assert.equal(await cancelOrder(paymentId, buyer.id), false);
-    await confirmProviderReceipt(paymentId, provider.id);
     assert.equal((await getPayment(paymentId))?.grantId, null);
     await Promise.all(Array.from({length:6}, () => confirmPlatformReceipt(paymentId, admin)));
-    const p = await getPayment(paymentId); assert.equal(p?.status, "completed"); assert.ok(p?.grantId); grantId = p.grantId;
+    const p = await getPayment(paymentId); assert.equal(p?.status, "completed"); assert.ok(p?.grantId); grantId = p.grantId!;
+    assert.equal(p.providerConfirmedAt, null);
+    assert.equal(await markProviderPaid(paymentId, admin), true);
+    assert.ok((await getPayment(paymentId))?.providerConfirmedAt);
     assert.equal((await db.get<{n:number}>("SELECT COUNT(*) AS n FROM grants WHERE listing_id = ? AND buyer_id = ?", [listing.id,buyer.id]))?.n, 1);
   });
   await t.test("key disclosure and limit editing respect ownership and purchased expiry", async () => {
@@ -63,7 +68,7 @@ test("purchase, settlement, ownership, seat delivery and concurrent budgets", { 
   await t.test("canceled orders cannot be confirmed back into active access", async()=>{
     const o=await createOrder(listing,buyer,500,"zelle"); assert.ok(o.ok);
     assert.equal(await cancelOrder(o.paymentId,buyer.id),true);
-    await Promise.all([confirmProviderReceipt(o.paymentId,provider.id),confirmPlatformReceipt(o.paymentId,admin)]);
+    await confirmPlatformReceipt(o.paymentId,admin);
     assert.equal((await getPayment(o.paymentId))?.status,"canceled"); assert.equal((await getPayment(o.paymentId))?.grantId,null);
   });
   await t.test("seat orders require an invitation email and preserve it through activation", async()=>{
@@ -71,7 +76,7 @@ test("purchase, settlement, ownership, seat delivery and concurrent budgets", { 
     const seat=await getListing(made.listingId!) as Listing;
     assert.equal((await createOrder(seat,buyer,0,"zelle")).ok,false);
     const o=await createOrder(seat,buyer,0,"zelle",{deliveryEmail:"invite@example.test"}); assert.ok(o.ok);
-    await confirmProviderReceipt(o.paymentId,provider.id); await confirmPlatformReceipt(o.paymentId,admin);
+    await confirmPlatformReceipt(o.paymentId,admin);
     const p=await getPayment(o.paymentId); const g=await getGrant(p!.grantId!); assert.equal(g?.deliveryEmail,"invite@example.test"); assert.equal(g.status,"pending_assignment");
     assert.equal(await activateSeat(g.id,stranger.id,120),false); assert.equal(await activateSeat(g.id,provider.id,120),true);
   });
@@ -85,7 +90,7 @@ test("purchase, settlement, ownership, seat delivery and concurrent budgets", { 
     const listing=await getListing(made.listingId!) as Listing; assert.equal(listing.nodeId,nodeId);
     const o=await createOrder(listing,buyer,600,"zelle"); assert.ok(o.ok);
     assert.equal((await getPayment(o.paymentId))?.grossCents,600);
-    await confirmProviderReceipt(o.paymentId,provider.id); await confirmPlatformReceipt(o.paymentId,admin);
+    await confirmPlatformReceipt(o.paymentId,admin);
     const g=await getGrant((await getPayment(o.paymentId))!.grantId!); assert.ok(g?.expiresAt);
     const hours=(g.expiresAt-g.startsAt)/3_600_000; assert.ok(hours>2.99&&hours<3.01,`expected 3 hours, got ${hours}`);
     assert.equal(await updateLimits(g.id,provider.id,{maxRpm:60,maxTokensPerRequest:4000,privacyFloor:"fast",expiresAt:g.expiresAt+3_600_000}),false);

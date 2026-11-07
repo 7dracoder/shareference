@@ -32,31 +32,32 @@ Requests run on your machine, so you can see buyers' prompts. The listing page w
 
 **For buyers (getters)**
 
-1. Pick a listing in **Get access** and choose how much credit to buy.
+1. Pick a listing and choose how much credit (or hours) to buy.
 2. Sign up with your email and name. You land back on the listing.
-3. The order page shows exactly who to pay and how much, with a reference code for the memo.
-4. Once the payment is confirmed, your key appears in **My access**. Use it with any OpenAI-compatible app, or try it in the browser.
+3. The order page shows a Zelle QR for the full amount and a reference for the memo.
+4. After Shareference confirms the deposit, your key appears in **My access**.
 5. See remaining credit and usage at any time. End access whenever you want.
 
 **For providers**
 
-1. In **Provide access**, add how you want to be paid (only methods buyers can actually use are shown).
-2. Create a listing: pick the service, paste your API key, set the models, price and default limits. For Darkbloom and Tinfoil you only paste the key.
-3. When a buyer pays, confirm you received it. Access starts once you and the platform have both confirmed.
+1. On **Share**, add where Shareference should send your earnings (buyers never see this).
+2. Create a listing: pick the service (logo + name), paste your API key, set models/price/limits — or connect a computer.
+3. When a buyer pays Shareference, their access goes live. Your payout shows as "on the way" until the platform sends it.
 4. See each buyer's usage (never their prompts), tighten limits, or revoke instantly.
 
 **For the platform owner (admin)**
 
-Sign in with the email in `ADMIN_EMAIL` to open **Admin** (`/ops`): revenue, platform-fee confirmations, agent activity and integration status.
+Sign in with the email in `ADMIN_EMAIL` to open **Admin** (`/ops`): confirm buyer deposits, pay providers their share, revenue, agent activity and integrations.
 
 ## Money
 
-Shareference never holds anyone's money. Each order has two direct payments:
+Buyers pay **Shareference once**, with Zelle.
 
-- **90% to the provider**, to their Zelle, Venmo, Cash App, PayPal or USDC address.
-- **10% platform fee to the platform**, to the `PLATFORM_*` handles. Set with `PLATFORM_FEE_BPS`.
+1. The order page shows a **Zelle QR** for the full amount, plus a short reference to put in the memo. Buyers never see the provider's payout handle.
+2. An admin confirms the deposit in **Admin** → access is issued.
+3. The admin then pays the provider their share (default 90%; set with `PLATFORM_FEE_BPS`) from the platform account, using the provider's saved payout details, and marks it paid.
 
-For bank and payment apps, each recipient confirms receipt. USDC on Base is verified on-chain automatically. A buyer can only pay with a method that **both** the provider and the platform accept. If the platform only has Zelle set, buyers can only pay with Zelle.
+Set `PLATFORM_ZELLE` (and optionally `PLATFORM_ZELLE_NAME`, `PLATFORM_ZELLE_QR_URL` for a bank-exported QR image). Provider payout methods are only visible to admins.
 
 ## Safety and limits
 

@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
 CREATE INDEX IF NOT EXISTS usage_grant ON usage_events(grant_id);
 CREATE INDEX IF NOT EXISTS usage_time ON usage_events(created_at);
 
--- Orders. Money never touches Shareference: buyers pay recipients directly,
+-- Orders. Buyers pay Shareference (Zelle); admins then pay providers their share.
 -- and each recipient (or the chain) confirms receipt.
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,

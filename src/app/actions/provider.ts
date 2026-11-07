@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { createListing, getListing, setListingStatus } from "@/lib/listings";
 import { activateSeat, getGrant, revokeGrant, updateLimits } from "@/lib/grants";
-import { canReceivePayments, confirmPlatformReceipt, confirmProviderReceipt } from "@/lib/payments";
+import { canReceivePayments, confirmPlatformReceipt, markProviderPaid } from "@/lib/payments";
 import { payoutMethodsSchema, setPayoutMethods } from "@/lib/users";
 import { allowedUpstream } from "@/lib/upstream";
 import { SERVICE_POLICIES } from "@/lib/policy";
@@ -53,7 +53,7 @@ const listingSchema = z.object({
 
 export async function createListingAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!canReceivePayments(user.payoutMethods)) return { error: "Add a payout method buyers can use first, so they can pay you directly." };
+  if (!canReceivePayments(user.payoutMethods)) return { error: "Add a payout method first so Shareference can send you your earnings." };
   if (str(form, "authorizedSharing") !== "on") return { error: "Confirm you are authorized to provide this access." };
   const kind = str(form, "kind");
   const service = str(form, "service");
@@ -126,15 +126,15 @@ export async function toggleListingAction(form: FormData): Promise<void> {
   revalidatePath("/marketplace");
 }
 
-export async function confirmReceiptAction(form: FormData): Promise<void> {
-  const user = await requireUser();
-  await confirmProviderReceipt(str(form, "paymentId"), user.id);
-  revalidatePath("/provider");
-}
-
 export async function confirmFeeAction(form: FormData): Promise<void> {
   const admin = await requireAdmin();
   await confirmPlatformReceipt(str(form, "paymentId"), admin);
+  revalidatePath("/ops");
+}
+
+export async function markProviderPaidAction(form: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  await markProviderPaid(str(form, "paymentId"), admin);
   revalidatePath("/ops");
 }
 

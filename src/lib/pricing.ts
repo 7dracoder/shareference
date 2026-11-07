@@ -71,3 +71,8 @@ export function formatCents(cents: number): string {
 export function feePercent(): string {
   return `${env.PLATFORM_FEE_BPS / 100}%`;
 }
+
+/** Provider share as a whole percent, e.g. 90 when the fee is 10%. */
+export function providerPercent(): number {
+  return Math.max(0, 100 - env.PLATFORM_FEE_BPS / 100);
+}

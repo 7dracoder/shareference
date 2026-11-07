@@ -1,10 +1,10 @@
 import { requireUser } from "@/lib/auth";
 import { listingsByProvider, getListing } from "@/lib/listings";
 import { grantsForProvider, usageSummary } from "@/lib/grants";
-import { acceptedMethods, canReceivePayments, pendingForProvider, METHOD_LABEL, type PayMethod } from "@/lib/payments";
+import { acceptedMethods, canReceivePayments, pendingPayoutsForProvider, METHOD_LABEL } from "@/lib/payments";
 import { SERVICE_POLICIES } from "@/lib/policy";
 import { nodesForProvider, specLines } from "@/lib/nodes";
-import { feePercent, formatCents, formatUsd } from "@/lib/pricing";
+import { providerPercent, formatCents, formatUsd } from "@/lib/pricing";
 import { aliasFrom, aliasMap } from "@/lib/users";
 import { ActionForm } from "@/components/action-form";
 import { ConnectComputer } from "@/components/connect-computer";
@@ -13,7 +13,6 @@ import { LimitsForm } from "@/components/limits-form";
 import { ServiceMark } from "@/components/service-mark";
 import {
   assignSeatAction,
-  confirmReceiptAction,
   connectComputerAction,
   createListingAction,
   revokeAction,
@@ -23,16 +22,16 @@ import {
 
 export default async function ProviderPage() {
   const user = await requireUser("/provider");
-  const [listings, allGrants, pending, computers] = await Promise.all([
+  const [listings, allGrants, awaitingPayout, computers] = await Promise.all([
     listingsByProvider(user.id),
     grantsForProvider(user.id),
-    pendingForProvider(user.id),
+    pendingPayoutsForProvider(user.id),
     nodesForProvider(user.id),
   ]);
   const grants = allGrants.filter((g) => g.status === "active" || g.status === "pending_assignment");
   const [details, aliases] = await Promise.all([
     Promise.all(grants.map(async (g) => ({ grant: g, listing: await getListing(g.listingId), usage: await usageSummary(g.id) }))),
-    aliasMap([...grants.map((g) => g.buyerId), ...pending.map((p) => p.buyerId)]),
+    aliasMap(grants.map((g) => g.buyerId)),
   ]);
   const pm = user.payoutMethods;
   const accepted = acceptedMethods();
@@ -45,18 +44,18 @@ export default async function ProviderPage() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Share access</h1>
         <p className="mt-3 max-w-2xl text-mid">
-          List API credit, a team seat, or your own computer. Buyers pay you directly and send the {feePercent()} platform fee separately.
+          List API credit, a team seat, or your own computer. Buyers pay Shareference; after their access is live, Shareference sends you {providerPercent()}% of the order.
           They see you as <span className="font-medium text-hi">{user.alias}</span>.
         </p>
       </div>
 
       <details className="card" open={!ready}>
-        <summary className="font-medium">{ready ? "Payment details (done)" : "Step 1: add payment details"}</summary>
+        <summary className="font-medium">{ready ? "Payout details (done)" : "Step 1: where should we send your earnings?"}</summary>
         {accepted.length === 0 ? (
-          <p className="mt-2 text-sm text-mid">Payments aren&apos;t open yet. The platform owner still needs to add a payout method.</p>
+          <p className="mt-2 text-sm text-mid">Payouts aren&apos;t open yet. The platform owner still needs to enable a payment method.</p>
         ) : (
           <>
-            <p className="mt-2 text-sm text-mid">Add at least one. Buyers can pay with {accepted.map((m) => METHOD_LABEL[m]).join(", ")}. Only a buyer with an order sees these, on their order page.</p>
+            <p className="mt-2 text-sm text-mid">Add at least one ({accepted.map((m) => METHOD_LABEL[m]).join(", ")}). Only Shareference uses this to pay you — buyers never see it.</p>
             <div className="mt-4">
               <ActionForm action={savePayoutAction} submitLabel="Save payment details">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -75,21 +74,16 @@ export default async function ProviderPage() {
         )}
       </details>
 
-      {pending.length > 0 && (
+      {awaitingPayout.length > 0 && (
         <section className="card">
-          <h2 className="text-lg font-semibold">Payments to confirm</h2>
-          <p className="mt-1 text-sm text-mid">Find the reference code in your payment app, then confirm. The buyer gets access once you and the platform have both confirmed.</p>
+          <h2 className="text-lg font-semibold">Payouts on the way</h2>
+          <p className="mt-1 text-sm text-mid">These sales are live for the buyer. Shareference will send your share to the payout details above.</p>
           <ul className="mt-3 divide-y divide-line">
-            {pending.map((p) => (
+            {awaitingPayout.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <span className="font-mono">{p.reference}</span>
-                <span>{aliasFrom(aliases, p.buyerId)}</span>
-                <span>{formatCents(p.providerCents)} via {METHOD_LABEL[p.method as PayMethod]}</span>
-                <span className="text-low">{p.status === "buyer_marked_sent" ? "Buyer says it's sent" : "Not sent yet"}</span>
-                <form action={confirmReceiptAction}>
-                  <input type="hidden" name="paymentId" value={p.id} />
-                  <button className="btn" type="submit">I received it</button>
-                </form>
+                <span className="font-medium">{formatCents(p.providerCents)}</span>
+                <span className="text-low">Pending</span>
               </li>
             ))}
           </ul>

@@ -6,7 +6,7 @@ import { availableMethods, METHOD_LABEL } from "@/lib/payments";
 import { getNode, specLines } from "@/lib/nodes";
 import { tierEnabled } from "@/lib/agents/router";
 import { env } from "@/lib/env";
-import { feePercent, formatCents, formatUsd, TIER_INFO, TIERS } from "@/lib/pricing";
+import { formatCents, formatUsd, TIER_INFO, TIERS } from "@/lib/pricing";
 import { CheckoutForm } from "@/components/checkout-form";
 import { ServiceMark } from "@/components/service-mark";
 import { serviceName } from "@/lib/services";
@@ -126,12 +126,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               </label>
               <p className="text-xs text-mid">
                 {(listing.kind === "pool" || listing.kind === "api_key") && "Credit expires 30 days after activation. "}
-                Bank and payment-app transfers are confirmed by hand before you get access.
-              </p>
-              <p className="text-xs text-low">
-                {listing.providerId
-                  ? `You pay the owner directly, and ${feePercent()} goes to Shareference as a separate payment. Nobody holds your money in between.`
-                  : "You pay Shareference directly for pool credit."}
+                You&apos;ll get a Zelle QR for the full amount. Access unlocks after Shareference confirms the deposit.
               </p>
             </CheckoutForm>
           </div>
