@@ -126,7 +126,8 @@ export async function syncClerkUser(profile: { id: string; name: string; verifie
     // Serialize first-login linking across concurrent navigation requests.
     await t.get("SELECT pg_advisory_xact_lock(hashtext(?))", [email || profile.id]);
     let row = await t.get<UserRow>("SELECT * FROM users WHERE clerk_id = ? FOR UPDATE", [profile.id]);
-    if (!row && email) row = await t.get<UserRow & { clerk_id: string | null }>("SELECT * FROM users WHERE email = ? AND clerk_id IS NULL FOR UPDATE", [email]);
+    // Clerk ids differ between Clerk instances (dev vs production), so relink by verified email.
+    if (!row && email) row = await t.get<UserRow>("SELECT * FROM users WHERE email = ? FOR UPDATE", [email]);
     if (row) {
       await t.run("UPDATE users SET clerk_id = ?, name = ? WHERE id = ?", [profile.id, profile.name.slice(0, 80), row.id]);
       return row.id;

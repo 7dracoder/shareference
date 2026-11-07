@@ -75,6 +75,7 @@ test("purchase, settlement, ownership, seat delivery and concurrent budgets", { 
   });
   await t.test("Clerk links an existing profile only with a verified email, preserving orders", async()=>{
     const linked=await syncClerkUser({id:`clerk_${tag}`,name:"Getter",verifiedEmail:buyer.email}); assert.equal(linked.id,buyer.id);
+    const relinked=await syncClerkUser({id:`clerk_prod_${tag}`,name:"Getter",verifiedEmail:buyer.email}); assert.equal(relinked.id,buyer.id);
     const parallel=await Promise.all(Array.from({length:4},()=>syncClerkUser({id:`clerk_new_${tag}`,name:"New member"}))); assert.equal(new Set(parallel.map(u=>u.id)).size,1); assert.equal(parallel[0].isAdmin,false);
     assert.equal((await getPayment(paymentId))?.buyerId,linked.id);
   });
