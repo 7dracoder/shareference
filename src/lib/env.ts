@@ -25,7 +25,7 @@ const schema = z.object({
   // Platform payout handles: where the 10% fee (and pool sales) go. Direct to your bank.
   PLATFORM_ZELLE: optional,
   PLATFORM_ZELLE_NAME: optional,
-  /** Optional hosted image of your bank's Zelle QR. Buyers see this on the order page. */
+  /** Optional override for the Zelle QR image URL. Defaults to /zelle-qr.png when unset. */
   PLATFORM_ZELLE_QR_URL: optional,
   PLATFORM_VENMO: optional,
   PLATFORM_CASHAPP: optional,

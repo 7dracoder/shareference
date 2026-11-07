@@ -62,18 +62,46 @@ function readSpecs() {
 }
 
 let local = null;
+/** @type {"missing" | "empty" | "ok"} */
+let localStatus = "missing";
 
 async function listModels() {
+  let reached = false;
   for (const base of local ? [local] : LOCAL_CANDIDATES) {
     try {
       const res = await fetch(`${base}/models`, { signal: AbortSignal.timeout(3000) });
       if (!res.ok) continue;
+      reached = true;
       const json = await res.json();
+      const ids = (json.data ?? []).map((m) => m.id).filter((id) => typeof id === "string" && id).slice(0, 200);
+      if (ids.length) {
+        local = base;
+        localStatus = "ok";
+        return ids;
+      }
+      // OpenAI-compatible list can be empty while Ollama's native tags still has models.
+      if (base.includes(":11434")) {
+        try {
+          const tags = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(3000) });
+          if (tags.ok) {
+            const body = await tags.json();
+            const fromTags = (body.models ?? []).map((m) => m.name).filter((id) => typeof id === "string" && id).slice(0, 200);
+            if (fromTags.length) {
+              local = base;
+              localStatus = "ok";
+              return fromTags;
+            }
+          }
+        } catch {}
+      }
       local = base;
-      return (json.data ?? []).map((m) => m.id).filter((id) => typeof id === "string" && id).slice(0, 200);
+      localStatus = "empty";
     } catch {}
   }
-  local = null;
+  if (!reached) {
+    local = null;
+    localStatus = "missing";
+  }
   return [];
 }
 
@@ -103,7 +131,11 @@ console.log("Buyers' prompts run on this machine. Shareference doesn't keep them
 let lastModels = "";
 for (;;) {
   const models = await listModels();
-  const summary = models.length ? `Models available: ${models.join(", ")}` : "No local models found. Start Ollama (or LM Studio's server) and download a model.";
+  const summary = models.length
+    ? `Models available: ${models.join(", ")}`
+    : localStatus === "empty"
+      ? "Ollama/LM Studio is running, but no models are installed. Run: ollama pull llama3.2:3b"
+      : "No local AI server. Start Ollama (`ollama serve`) or LM Studio's local server, then: ollama pull llama3.2:3b";
   if (summary !== lastModels) {
     console.log(summary);
     lastModels = summary;

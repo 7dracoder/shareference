@@ -22,7 +22,7 @@ The supported list lives in `src/lib/policy.ts`. The listing form shows each ser
 ### Share your own computer
 
 1. On **Share**, click **Connect a computer**. Run the one-line command it shows (needs Node.js 18+).
-2. Start Ollama or LM Studio with at least one model. The agent reports your specs and models.
+2. Start Ollama (`ollama serve`) or LM Studio's local server, then install a model (`ollama pull llama3.2:3b` fits Apple Silicon with ~16 GB). The agent reports your specs and models. If `OLLAMA_MODELS` points at an unmounted drive, Ollama won't start — unset it or mount the drive.
 3. Create a **My computer** listing with an hourly price. Buyers see GPU/CPU/RAM/disk and which models are installed.
 4. Leave the terminal open while you want to be available. Closing it (or pressing Ctrl+C) takes you offline. When a buyer's hours end, their key stops working.
 
@@ -57,7 +57,7 @@ Buyers pay **Shareference once**, with Zelle.
 2. An admin confirms the deposit in **Admin** → access is issued.
 3. The admin then pays the provider their share (default 90%; set with `PLATFORM_FEE_BPS`) from the platform account, using the provider's saved payout details, and marks it paid.
 
-Set `PLATFORM_ZELLE` (and optionally `PLATFORM_ZELLE_NAME`, `PLATFORM_ZELLE_QR_URL` for a bank-exported QR image). Provider payout methods are only visible to admins.
+Set `PLATFORM_ZELLE` (and optionally `PLATFORM_ZELLE_NAME`). The order page shows the bundled Zelle QR at `/zelle-qr.png` (override with `PLATFORM_ZELLE_QR_URL` if needed). Provider payout methods are only visible to admins.
 
 ## Safety and limits
 
