@@ -1,26 +1,54 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-ink: #0c0e11;
+  --color-panel: #12161b;
+  --color-line: #2a3038;
+  --color-hi: #f2f4f6;
+  --color-mid: #a7b0ba;
+  --color-low: #7c8590;
+  --color-acid: #c8ff00;
+  --color-warn: #ffaa1e;
+  --color-bad: #f0382b;
+  --font-mono: ui-monospace, "IBM Plex Mono", Menlo, monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-ink);
+  color: var(--color-hi);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-line bg-panel p-5;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-acid px-4 py-2 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm text-hi transition hover:border-mid disabled:opacity-50;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center rounded-md border border-bad/60 px-3 py-1.5 text-sm text-bad transition hover:bg-bad/10;
+  }
+  .input {
+    @apply w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-hi placeholder:text-low focus:border-acid focus:outline-none;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wider text-mid;
+  }
+  .kicker {
+    @apply font-mono text-xs uppercase tracking-[0.14em] text-acid;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-mid;
+  }
+  .code {
+    @apply overflow-x-auto rounded-md border border-line bg-ink p-3 font-mono text-xs leading-relaxed text-hi;
+  }
 }
