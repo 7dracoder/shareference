@@ -1,5 +1,6 @@
 import "server-only";
 import { env } from "../env";
+import { allowedUpstream } from "../upstream";
 import { openSecret } from "../crypto";
 import { getListingCredential, type Listing } from "../listings";
 import type { Grant } from "../grants";
@@ -11,7 +12,7 @@ import { detectPii, sieChat, sieEnabled } from "../integrations/sie";
 import {
   BackendError,
   callOpenAiCompatible,
-  lastUserText,
+  messagesText,
   mockChat,
   type BackendResult,
   type ChatRequest,
@@ -42,6 +43,7 @@ export function parseTier(value: string | null): Tier | null {
 
 /** Shared-account listings: forward to the provider's own upstream with their sealed key. */
 async function routeShared(listing: Listing, request: ChatRequest): Promise<RoutedResult> {
+  if (!listing.upstreamBaseUrl || !allowedUpstream(listing.upstreamBaseUrl)) throw new BackendError("Upstream host is not enabled", 503, false);
   const sealed = await getListingCredential(listing.id);
   if (!sealed || !listing.upstreamBaseUrl) throw new BackendError("Listing has no credential", 503, false);
   const model = request.model ?? listing.models[0];
@@ -66,11 +68,11 @@ async function routePool(grant: Grant, request: ChatRequest, requested: Tier | n
   let upgradedForPii = false;
 
   if (tier !== "verified") {
-    const scan = await detectPii(lastUserText(request));
-    if (scan.found) {
+    const scan = await detectPii(messagesText(request));
+    if (scan.found || !scan.checked) {
       tier = "verified";
       upgradedForPii = true;
-      await agentLog("router", "upgraded to verified", `Personal data detected (${scan.labels.join(", ")}); routed to Tinfoil enclave.`);
+      await agentLog("router", "upgraded to verified", `Privacy check requires verified processing; routed to Tinfoil enclave.`);
     }
   }
 

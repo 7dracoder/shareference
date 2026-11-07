@@ -2,6 +2,7 @@ import "server-only";
 import { db, now, parseJsonArray } from "./db";
 import { newId, sealSecret } from "./crypto";
 import { aliasOf } from "./users";
+import { allowedUpstream } from "./upstream";
 import { checkPolicy } from "./policy";
 import { agentLog } from "./agents/log";
 
@@ -99,7 +100,7 @@ async function ensurePoolListing(): Promise<void> {
     [
       POOL_LISTING_ID,
       "Shareference private inference pool",
-      "One OpenAI-compatible key. Requests are routed to Superlinked SIE (fast), Darkbloom (private) or Tinfoil (verified) by cost and privacy. Requests containing personal data are upgraded to the verified tier automatically.",
+      "One OpenAI-compatible key. Requests are routed to Superlinked SIE (fast), Darkbloom (private) or Tinfoil (verified) by cost and privacy. Pool chat uses a best-effort personal-data check; detected or unchecked content requires the verified tier. Embeddings and rerank run on SIE.",
       JSON.stringify(["chat", "embeddings", "rerank"]),
       now(),
     ],
@@ -156,6 +157,9 @@ export interface CreateListingResult {
 /** Policy Guard agent checks the service's sharing rules before anything is stored. */
 export async function createListing(providerId: string, input: NewListingInput): Promise<CreateListingResult> {
   const alias = await aliasOf(providerId);
+  if (input.kind === "api_key" && (!input.upstreamBaseUrl || !allowedUpstream(input.upstreamBaseUrl) || input.models.length === 0 || input.pricePer1kMicros <= 0 || input.features.length !== 1 || input.features[0] !== "chat")) {
+    return { ok: false, message: "Use a supported API host, at least one model, a positive price, and chat access." };
+  }
   const decision = checkPolicy(input.service, input.kind);
   if (!decision.allowed) {
     await agentLog("policy-guard", "rejected listing", `${alias} tried to list ${input.service}: ${decision.reason}`);

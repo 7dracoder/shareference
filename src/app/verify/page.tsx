@@ -1,85 +1,17 @@
 import { Fragment, Suspense } from "react";
+import Link from "next/link";
 import { verifyTinfoil } from "@/lib/integrations/tinfoil";
-
-const TRUST_MODEL = [
-  {
-    tier: "Fast (Superlinked SIE)",
-    sees: "SIE operator sees the request.",
-    use: "Embeddings, rerank, extraction, short non-sensitive chat.",
-  },
-  {
-    tier: "Private (Darkbloom)",
-    sees: "Encrypted to a hardware-attested Mac; hidden from the Mac's operator.",
-    use: "Default for chat.",
-  },
-  {
-    tier: "Verified (Tinfoil)",
-    sees: "Only an attested enclave can decrypt. Tinfoil cannot read it.",
-    use: "Anything with personal data. Forced automatically when SIE detects PII.",
-  },
-];
 
 async function TinfoilStatus() {
   const v = await verifyTinfoil();
-  if (!v.configured) return <p className="text-sm text-mid">Tinfoil is not configured on this deployment yet.</p>;
-  return (
-    <div className="space-y-3 text-sm">
-      <p className={v.verified ? "text-acid" : "text-bad"}>
-        {v.verified ? "Enclave verified: code and hardware measurements match." : `Verification failed${v.error ? `: ${v.error}` : ""}`}
-      </p>
-      <dl className="grid grid-cols-[160px_1fr] gap-2 font-mono text-xs">
-        {v.enclaveHost && (<><dt className="text-low">Enclave</dt><dd className="break-all">{v.enclaveHost}</dd></>)}
-        {v.configRepo && (<><dt className="text-low">Config repo</dt><dd className="break-all">{v.configRepo}</dd></>)}
-        {v.releaseTag && (<><dt className="text-low">Release</dt><dd>{v.releaseTag}</dd></>)}
-        {v.codeDigest && (<><dt className="text-low">Release digest</dt><dd className="break-all">{v.codeDigest}</dd></>)}
-        {Object.entries(v.steps).map(([k, s]) => (
-          <Fragment key={k}><dt className="text-low">{k}</dt><dd>{s}</dd></Fragment>
-        ))}
-      </dl>
-    </div>
-  );
+  if (!v.configured) return <p className="text-sm text-mid">Verified inference is not connected on this deployment yet.</p>;
+  return <div className="space-y-3 text-sm"><p className={v.verified ? "text-acid" : "text-warn"}>{v.verified ? "Tinfoil’s inference enclave passed verification." : "We couldn’t verify the inference enclave. Please try again later."}</p><dl className="grid gap-x-5 gap-y-2 font-mono text-xs sm:grid-cols-[140px_1fr]">{v.enclaveHost && <><dt className="text-low">Inference enclave</dt><dd className="break-all">{v.enclaveHost}</dd></>}{v.codeDigest && <><dt className="text-low">Release digest</dt><dd className="break-all">{v.codeDigest}</dd></>}{Object.entries(v.steps).map(([key, value]) => <Fragment key={key}><dt className="text-low">{key}</dt><dd>{value}</dd></Fragment>)}</dl></div>;
 }
-
-export default function VerifyPage() {
-  return (
-    <div className="space-y-8">
-      <div>
-        <p className="kicker">Verify</p>
-        <h1 className="mt-3 font-mono text-3xl">Don&apos;t trust us. Check.</h1>
-        <p className="mt-3 max-w-2xl text-mid">
-          The verified tier uses Tinfoil&apos;s SDK, which checks the enclave&apos;s attestation against a release published to the Sigstore transparency
-          log before sending anything. Shareference itself is packaged to run as a Tinfoil Container, so the router and vault can be attested the same way.
-        </p>
-      </div>
-
-      <section className="card">
-        <h2 className="kicker">Live Tinfoil attestation</h2>
-        <div className="mt-4">
-          <Suspense fallback={<p className="text-sm text-low">Verifying enclave…</p>}>
-            <TinfoilStatus />
-          </Suspense>
-        </div>
-      </section>
-
-      <section className="card">
-        <h2 className="kicker">Who can see what</h2>
-        <table className="mt-4 w-full text-left text-sm">
-          <thead className="text-low">
-            <tr><th className="py-2 pr-4 font-normal">Tier</th><th className="py-2 pr-4 font-normal">Who can read your request</th><th className="py-2 font-normal">Used for</th></tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {TRUST_MODEL.map((r) => (
-              <tr key={r.tier}><td className="py-2 pr-4">{r.tier}</td><td className="py-2 pr-4 text-mid">{r.sees}</td><td className="py-2 text-mid">{r.use}</td></tr>
-            ))}
-          </tbody>
-        </table>
-        <ul className="mt-6 space-y-2 text-sm text-mid">
-          <li>· Shareference stores only usage metadata: token counts, cost, latency, backend. Never prompts or outputs.</li>
-          <li>· Owners&apos; credentials are sealed with AES-256-GCM. Buyers get capped sub-keys; owners see usage counts, never content.</li>
-          <li>· Buyers and owners see each other only as random aliases. Payout handles are shown only to the buyer of a specific order.</li>
-          <li>· Fallbacks only move to a more private tier, never a less private one.</li>
-        </ul>
-      </section>
-    </div>
-  );
+export default function PrivacyPage() {
+  return <div className="mx-auto max-w-3xl space-y-8"><div><p className="kicker">Privacy & trust</p><h1 className="mt-3 text-3xl font-semibold tracking-tight">Know where your request goes.</h1><p className="mt-4 leading-relaxed text-mid">Shareference is a gateway. Requests pass through our server on Vercel before they reach an inference provider. The Shareference app itself is not running in a verified enclave.</p></div>
+    <section className="card space-y-4"><h2 className="text-lg font-medium">What we store</h2><p className="text-sm leading-relaxed text-mid">We store your account profile, orders, encrypted access keys, and usage metadata: token counts, cost, time, and provider. We do not intentionally persist your prompts or responses in the app database or activity logs. Requests are processed in memory by our gateway and the chosen upstream service.</p><p className="text-sm leading-relaxed text-mid">Clerk handles sign-in. We use your name for your account and a verified email to safely reconnect existing accounts when available. Other users see an alias. Payment recipients may see your real name or payment details in their payment app.</p></section>
+    <section className="card space-y-4"><h2 className="text-lg font-medium">Inference and routing</h2><ul className="space-y-4 text-sm leading-relaxed text-mid"><li><strong className="text-hi">Provider listings.</strong> Requests go to the API selected by the provider. Their upstream service’s privacy and retention rules apply. A limited key does not make an upstream private.</li><li><strong className="text-hi">Pool chat.</strong> The pool chooses from configured backends. The Fast tier uses Superlinked SIE; Private uses Darkbloom over HTTPS; Verified uses Tinfoil’s SDK to verify the inference enclave. This code does not independently verify Darkbloom attestation.</li><li><strong className="text-hi">Personal data checks.</strong> For non-verified pool chat, text is sent to Superlinked SIE for a best-effort personal-data check. Detected or unchecked content is routed to Verified. Detection can miss sensitive data; choose Verified to skip the SIE check.</li><li><strong className="text-hi">Embeddings and rerank.</strong> These always use Superlinked SIE and do not inherit the chat privacy tier. Do not send confidential content to these endpoints unless SIE’s terms meet your needs.</li></ul></section>
+    <section className="card space-y-4"><h2 className="text-lg font-medium">Live inference verification</h2><Suspense fallback={<p role="status" className="text-sm text-mid">Checking Tinfoil’s inference enclave…</p>}><TinfoilStatus /></Suspense></section>
+    <p className="text-sm text-mid">Read <Link className="text-acid" href="/guide">how payments and access work</Link> before placing an order.</p>
+  </div>;
 }

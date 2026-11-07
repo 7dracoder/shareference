@@ -61,11 +61,12 @@ async function GrantCard({ grant }: { grant: Grant }) {
       ) : (
         <>
           <BudgetBar spent={grant.spentMicros} budget={grant.budgetMicros} />
-          {grant.keyPrefix && <RevealKey grantId={grant.id} keyPrefix={grant.keyPrefix} action={revealKeyAction} />}
+          {grant.keyPrefix && grant.status === "active" && <RevealKey grantId={grant.id} keyPrefix={grant.keyPrefix} action={revealKeyAction} />}
           <p className="font-mono text-xs text-mid">
             {usage.requests} requests · {usage.tokens.toLocaleString()} tokens · {usage.blocked} blocked
             {usage.byBackend.length > 0 && ` · ${usage.byBackend.map((b) => `${b.backend}: ${b.requests}`).join(", ")}`}
           </p>
+          {grant.status === "active" && <Link className="btn-ghost" href={`/playground?grant=${grant.id}`}>Try this access</Link>}
           <details>
             <summary className="cursor-pointer text-sm text-mid hover:text-hi">How to call it</summary>
             <pre className="code mt-2">{`from openai import OpenAI
@@ -113,11 +114,11 @@ export default async function DashboardPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="kicker">My access</p>
-          <h1 className="mt-3 font-mono text-3xl">Keys and seats you bought</h1>
+          <h1 className="mt-3 font-mono text-3xl">Your access, in one place</h1>
         </div>
         <div className="flex gap-3">
-          <Link href="/playground" className="btn-ghost">Playground</Link>
-          <Link href="/marketplace" className="btn">Buy access</Link>
+          <Link href="/playground" className="btn-ghost">Try a key</Link>
+          <Link href="/marketplace" className="btn">Get access</Link>
         </div>
       </div>
 
@@ -138,7 +139,7 @@ export default async function DashboardPage() {
 
       {grants.length === 0 ? (
         <div className="card text-mid">
-          No access yet. Start with the <Link className="text-acid" href="/marketplace">private inference pool</Link>.
+          No access yet. Browse the <Link className="text-acid" href="/marketplace">available listings</Link>.
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">

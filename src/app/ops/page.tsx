@@ -55,7 +55,7 @@ export default async function OpsPage() {
       <section className="card">
         <h2 className="kicker">Confirm money that reached your bank</h2>
         {pending.length === 0 ? (
-          <p className="mt-3 text-sm text-mid">Nothing waiting. ({revenue.demoOrders} demo orders so far.)</p>
+          <p className="mt-3 text-sm text-mid">Nothing waiting.{revenue.demoOrders > 0 && ` (${revenue.demoOrders} demo orders so far.)`}</p>
         ) : (
           <ul className="mt-3 divide-y divide-line">
             {pending.map((p) => (

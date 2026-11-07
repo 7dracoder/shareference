@@ -5,18 +5,11 @@ import { z } from "zod";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { createListing, getListing, setListingStatus } from "@/lib/listings";
 import { activateSeat, getGrant, revokeGrant, updateLimits } from "@/lib/grants";
-import { confirmPlatformReceipt, confirmProviderReceipt } from "@/lib/payments";
-import { hasPayoutMethod, payoutMethodsSchema, setPayoutMethods } from "@/lib/users";
+import { canReceivePayments, confirmPlatformReceipt, confirmProviderReceipt } from "@/lib/payments";
+import { payoutMethodsSchema, setPayoutMethods } from "@/lib/users";
+import { allowedUpstream } from "@/lib/upstream";
 import { TIERS, type Tier } from "@/lib/pricing";
 import { list, num, str, type ActionState } from "@/lib/form";
-
-/** Blocks SSRF via provider-supplied upstream URLs: only public DNS hostnames are allowed. */
-function isPublicHost(url: string): boolean {
-  const host = new URL(url).hostname.toLowerCase();
-  const isIpLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":") || host.startsWith("[");
-  const isInternal = host === "localhost" || /\.(local|internal|localhost|lan|home|corp)$/.test(host) || !host.includes(".");
-  return !isIpLiteral && !isInternal;
-}
 
 export async function savePayoutAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
@@ -56,7 +49,8 @@ const listingSchema = z.object({
 
 export async function createListingAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!hasPayoutMethod(user.payoutMethods)) return { error: "Add a payout method first, so buyers can pay you directly." };
+  if (!canReceivePayments(user.payoutMethods)) return { error: "Add a payout method buyers can use first, so they can pay you directly." };
+  if (str(form, "authorizedSharing") !== "on") return { error: "Confirm you are authorized to provide this access." };
   const kind = str(form, "kind");
   const parsed = listingSchema.safeParse({
     kind,
@@ -76,11 +70,12 @@ export async function createListingAction(_prev: ActionState, form: FormData): P
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const d = parsed.data;
+  if (d.kind === "api_key" && (d.models.length === 0 || d.pricePer1kUsd <= 0 || d.features.some((f) => f !== "chat"))) return { error: "Add at least one model and a positive price. Shared APIs currently support chat." };
   if (d.kind === "api_key" && d.features.length === 0) return { error: "Grant at least one feature." };
   if (d.kind === "seat" && (d.seatPriceUsd < 1 || d.seatMinutes < 15)) return { error: "Seats need a price of at least $1 and at least 15 minutes." };
 
-  if (d.upstreamBaseUrl && !isPublicHost(d.upstreamBaseUrl)) {
-    return { error: "Upstream must be a public hostname (no IP addresses, localhost or internal hosts)." };
+  if (d.upstreamBaseUrl && !allowedUpstream(d.upstreamBaseUrl)) {
+    return { error: "Choose a supported API host. Ask the platform owner to enable another host." };
   }
 
   const result = await createListing(user.id, {
@@ -164,5 +159,5 @@ export async function updateLimitsAction(_prev: ActionState, form: FormData): Pr
   });
   revalidatePath("/provider");
   revalidatePath("/dashboard");
-  return ok ? { ok: true, message: "Limits updated. They apply to the next request." } : { error: "Only the owner can change these limits." };
+  return ok ? { ok: true, message: "Limits updated. They apply to the next request." } : { error: "Use limits within the listing’s allowance and an expiry within 30 days of purchase. Only the owner can change them." };
 }

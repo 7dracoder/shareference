@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
   created_at BIGINT NOT NULL
 );
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS users_clerk_id ON users(clerk_id);
+
 CREATE TABLE IF NOT EXISTS listings (
   id TEXT PRIMARY KEY,
   provider_id TEXT REFERENCES users(id),
@@ -56,6 +59,14 @@ CREATE TABLE IF NOT EXISTS grants (
 );
 CREATE INDEX IF NOT EXISTS grants_buyer ON grants(buyer_id);
 CREATE INDEX IF NOT EXISTS grants_provider ON grants(provider_id);
+CREATE TABLE IF NOT EXISTS usage_reservations (
+  id TEXT PRIMARY KEY,
+  grant_id TEXT NOT NULL REFERENCES grants(id),
+  amount_micros BIGINT NOT NULL CHECK (amount_micros >= 0),
+  expires_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS usage_reservations_grant ON usage_reservations(grant_id, expires_at);
+
 
 -- Usage is metadata only. Prompts and outputs are never stored.
 CREATE TABLE IF NOT EXISTS usage_events (
@@ -98,6 +109,13 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS payments_provider ON payments(provider_id, status);
 CREATE INDEX IF NOT EXISTS payments_buyer ON payments(buyer_id);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS listing_snapshot TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_legs TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS checkout_key TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS delivery_email TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS payments_checkout ON payments(buyer_id, checkout_key);
+ALTER TABLE grants ADD COLUMN IF NOT EXISTS delivery_email TEXT;
+
 
 -- Each on-chain transfer can pay for one order only.
 CREATE TABLE IF NOT EXISTS used_tx (

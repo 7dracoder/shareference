@@ -31,14 +31,14 @@ export const TIER_INFO: Record<Tier, TierInfo> = {
     tier: "private",
     label: "Private",
     backend: "Darkbloom",
-    guarantee: "Encrypted to hardware-attested Apple Silicon Macs; hidden from operators.",
+    guarantee: "Darkbloom inference over HTTPS. See the privacy page for the trust model.",
     pricePer1kMicros: 400,
   },
   verified: {
     tier: "verified",
     label: "Verified",
     backend: "Tinfoil",
-    guarantee: "Runs in an attested secure enclave, verifiable end to end.",
+    guarantee: "Inference runs in an attested enclave verified by the Tinfoil SDK.",
     pricePer1kMicros: 1200,
   },
 };

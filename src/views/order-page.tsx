@@ -5,6 +5,8 @@ import { getPayment, METHOD_LABEL, paymentLegs, type PayMethod } from "@/lib/pay
 import { getListing } from "@/lib/listings";
 import { formatCents } from "@/lib/pricing";
 import { usdcNetworkLabel } from "@/lib/integrations/usdc";
+import { RefreshStatus } from "@/components/refresh-status";
+import { getGrant } from "@/lib/grants";
 import { ActionForm } from "@/components/action-form";
 import { cancelOrderAction, markSentAction, submitUsdcAction } from "@/app/actions/buyer";
 
@@ -14,6 +16,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const payment = await getPayment(id);
   if (!payment || payment.buyerId !== user.id) notFound();
   const [listing, legs] = await Promise.all([getListing(payment.listingId), paymentLegs(payment)]);
+  const grant = payment.grantId ? await getGrant(payment.grantId) : null;
   const open = payment.status === "awaiting_payment" || payment.status === "buyer_marked_sent";
   const isUsdc = payment.method === "usdc";
   const methodLabel = payment.method === "demo" ? "Demo payment" : METHOD_LABEL[payment.method as PayMethod];
@@ -28,12 +31,13 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
 
       {payment.status === "completed" && (
         <div className="card mt-6 border-acid/50">
-          <p className="text-acid">Paid. Your access is ready.</p>
+          <p className="text-acid">{grant?.status === "pending_assignment" ? "Payment confirmed. Your provider will send your seat invitation." : "Payment confirmed. Your access is ready."}</p>
           <Link href="/dashboard" className="btn mt-4">Go to my access</Link>
         </div>
       )}
       {payment.status === "canceled" && <div className="card mt-6 text-mid">This order was canceled.</div>}
 
+      {open && <RefreshStatus />}
       {open && (
         <>
           <div className="card mt-6 space-y-4">
@@ -90,9 +94,9 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                   <button className="btn" type="submit">I&apos;ve sent the payments</button>
                 </form>
               ) : (
-                <p className="text-sm text-mid">Marked as sent. Your key is issued once each recipient confirms. Refresh to check.</p>
+                <p className="text-sm text-mid">Marked as sent. Your access is issued once each recipient confirms. This page checks for updates automatically.</p>
               )}
-              {payment.providerConfirmedAt === null && payment.feeConfirmedAt === null && (
+              {payment.status === "awaiting_payment" && payment.providerConfirmedAt === null && payment.feeConfirmedAt === null && (
                 <form action={cancelOrderAction}>
                   <input type="hidden" name="paymentId" value={payment.id} />
                   <button className="btn-ghost" type="submit">Cancel order</button>

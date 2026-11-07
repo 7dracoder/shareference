@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authorize, checkOrBlock, openAiError, readJson } from "@/lib/api";
+import { reserveBudget } from "@/lib/billing";
 import { recordUsage } from "@/lib/grants";
 import { sieEnabled, sieRerank } from "@/lib/integrations/sie";
 import { estimateTokens } from "@/lib/integrations/openai-compat";
@@ -32,10 +33,13 @@ export async function POST(req: Request): Promise<Response> {
 
   const started = Date.now();
   const tokens = parsed.data.documents.reduce((sum, d) => sum + estimateTokens(d), estimateTokens(parsed.data.query));
+  const reservationId = await reserveBudget(auth.grant.id, costMicros(tokens, TIER_INFO.fast.pricePer1kMicros));
+  if (!reservationId) return openAiError(402, "insufficient_credit", "Not enough available credit for this request.");
   try {
     const result = await sieRerank(parsed.data.query, parsed.data.documents, parsed.data.model);
     await recordUsage({
       grantId: auth.grant.id,
+      reservationId,
       endpoint: ENDPOINT,
       backend: "superlinked-sie",
       tier: "fast",
@@ -49,6 +53,7 @@ export async function POST(req: Request): Promise<Response> {
     const results = result.scores.map((s) => ({ index: Number(s.item_id), relevance_score: s.score }));
     return Response.json({ results }, { headers: { "x-shareference-backend": "superlinked-sie" } });
   } catch (error: unknown) {
+    await recordUsage({ grantId: auth.grant.id, reservationId, endpoint: ENDPOINT, backend: "superlinked-sie", tier: "fast", model: null, promptTokens: 0, completionTokens: 0, costMicros: 0, latencyMs: Date.now() - started, outcome: "error" });
     logger.warn("rerank failed", { error: String(error) });
     return openAiError(502, "upstream_error", "The rerank backend failed. You were not charged.");
   }

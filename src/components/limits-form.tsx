@@ -11,7 +11,7 @@ interface LimitsFormProps {
 }
 
 function hoursUntil(expiresAt: number | null): number {
-  return expiresAt ? Math.max(0, Math.round((expiresAt - Date.now()) / 3_600_000)) : 0;
+  return expiresAt ? Math.max(0, Math.floor((expiresAt - Date.now()) / 36_000) / 100) : 0;
 }
 
 export function LimitsForm({ grantId, maxRpm, maxTokensPerRequest, privacyFloor, expiresAt, showPrivacy }: LimitsFormProps) {
@@ -29,8 +29,8 @@ export function LimitsForm({ grantId, maxRpm, maxTokensPerRequest, privacyFloor,
           <input className="input" name="maxTokensPerRequest" type="number" min={16} max={128000} defaultValue={maxTokensPerRequest} />
         </label>
         <label>
-          <span className="label">Expires in (hours, 0 = never)</span>
-          <input className="input" name="expiresInHours" type="number" min={0} step="1" defaultValue={hoursLeft} />
+          <span className="label">Expires in (hours)</span>
+          <input className="input" name="expiresInHours" type="number" min={0.01} max={720} step="any" defaultValue={hoursLeft} />
         </label>
         {showPrivacy ? (
           <label>

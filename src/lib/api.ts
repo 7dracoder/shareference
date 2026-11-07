@@ -23,6 +23,7 @@ export async function authorize(req: Request): Promise<Authorized | Response> {
   if (!grant) return openAiError(401, "invalid_api_key", "Unknown key.");
   const listing = await getListing(grant.listingId);
   if (!listing) return openAiError(410, "listing_gone", "The listing behind this key no longer exists.");
+  if (listing.status === "rejected") return openAiError(403, "listing_unavailable", "This listing is no longer available.");
   return { grant, listing };
 }
 
@@ -56,7 +57,21 @@ export async function checkOrBlock(
 export async function readJson(req: Request, maxBytes = 1_000_000): Promise<unknown> {
   const length = Number(req.headers.get("content-length") ?? "0");
   if (length > maxBytes) throw new Error("Request body too large");
-  const text = await req.text();
-  if (text.length > maxBytes) throw new Error("Request body too large");
-  return JSON.parse(text);
+  if (!req.body) throw new Error("Missing body");
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) { await reader.cancel(); throw new Error("Request body too large"); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length; }
+  return JSON.parse(new TextDecoder().decode(body));
 }

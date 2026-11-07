@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #0c0e11;
-  --color-panel: #12161b;
-  --color-line: #2a3038;
-  --color-hi: #f2f4f6;
-  --color-mid: #a7b0ba;
-  --color-low: #7c8590;
-  --color-acid: #c8ff00;
+  --color-ink: #101413;
+  --color-panel: #181e1b;
+  --color-line: #303b35;
+  --color-hi: #f1f5f2;
+  --color-mid: #b4c1b9;
+  --color-low: #91a198;
+  --color-acid: #b6e6c7;
   --color-warn: #ffaa1e;
   --color-bad: #f0382b;
   --font-mono: ui-monospace, "IBM Plex Mono", Menlo, monospace;
@@ -25,22 +25,22 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-lg border border-line bg-panel p-5;
+    @apply rounded-xl border border-line bg-panel p-5;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md bg-acid px-4 py-2 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-acid min-h-11 px-5 py-2.5 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm text-hi transition hover:border-mid disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-line min-h-10 px-4 py-2 text-sm text-hi transition hover:border-mid disabled:opacity-50;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center rounded-md border border-bad/60 px-3 py-1.5 text-sm text-bad transition hover:bg-bad/10;
+    @apply inline-flex items-center justify-center rounded-md border border-bad/60 min-h-10 px-4 py-2 text-sm text-bad transition hover:bg-bad/10;
   }
   .input {
     @apply w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-hi placeholder:text-low focus:border-acid focus:outline-none;
   }
   .label {
-    @apply mb-1 block text-xs font-medium uppercase tracking-wider text-mid;
+    @apply mb-1 block text-sm font-medium text-mid;
   }
   .kicker {
     @apply font-mono text-xs uppercase tracking-[0.14em] text-acid;
@@ -52,3 +52,10 @@ body {
     @apply overflow-x-auto rounded-md border border-line bg-ink p-3 font-mono text-xs leading-relaxed text-hi;
   }
 }
+
+:focus-visible { outline: 2px solid var(--color-acid); outline-offset: 4px; }
+button, summary { cursor: pointer; }
+.skip-link { position: fixed; top: -100px; left: 1rem; z-index: 100; background: var(--color-acid); color: var(--color-ink); padding: .75rem 1rem; border-radius: .5rem; }
+.skip-link:focus { top: 1rem; }
+pre, code { overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

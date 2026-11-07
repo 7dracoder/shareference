@@ -42,9 +42,9 @@ const schema = z.object({
   SIE_BASE_URL: optional,
   SIE_API_KEY: optional,
   SIE_EMBED_MODEL: z.string().default("BAAI/bge-m3"),
-  SIE_RERANK_MODEL: z.string().default("BAAI/bge-reranker-v2-m3"),
+  SIE_RERANK_MODEL: z.string().default("Qwen/Qwen3-Reranker-0.6B"),
   SIE_PII_MODEL: z.string().default("urchade/gliner_multi-v2.1"),
-  SIE_CHAT_MODEL: z.string().default("Qwen/Qwen3-4B-Instruct-2507"),
+  SIE_CHAT_MODEL: z.string().default("Qwen/Qwen3.5-4B"),
 
   COGNEE_BASE_URL: optional,
   COGNEE_API_KEY: optional,
@@ -65,11 +65,11 @@ function load(): Env {
   const env = parsed.data;
   // `next build` runs with NODE_ENV=production; runtime checks apply only when serving.
   const isBuild = process.env.NEXT_PHASE === "phase-production-build";
-  if (!isBuild && env.NODE_ENV === "production" && (!env.SESSION_SECRET || !env.VAULT_KEY)) {
-    throw new Error("SESSION_SECRET and VAULT_KEY are required in production");
+  if (!isBuild && env.NODE_ENV === "production" && !env.VAULT_KEY) {
+    throw new Error("VAULT_KEY is required in production");
   }
   if (!isBuild && env.NODE_ENV === "production" && env.DEMO_MODE) {
-    process.stderr.write("WARNING: DEMO_MODE is on. Demo payments are enabled; demo orders are excluded from revenue.\n");
+    throw new Error("DEMO_MODE must be disabled in production");
   }
   return env;
 }

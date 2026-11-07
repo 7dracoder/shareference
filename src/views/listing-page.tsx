@@ -5,7 +5,7 @@ import { currentUser } from "@/lib/auth";
 import { availableMethods, METHOD_LABEL } from "@/lib/payments";
 import { env } from "@/lib/env";
 import { feePercent, formatCents, formatUsd, TIER_INFO, TIERS } from "@/lib/pricing";
-import { ActionForm } from "@/components/action-form";
+import { CheckoutForm } from "@/components/checkout-form";
 import { buyAction } from "@/app/actions/buyer";
 
 export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {
@@ -58,7 +58,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
         <h2 className="kicker">Buy</h2>
         {!user ? (
           <p className="mt-4 text-sm text-mid">
-            <Link className="text-acid" href={`/login?next=/marketplace/${listing.id}`}>Log in</Link> to buy.
+            <Link className="text-acid" href={`/signup?next=/marketplace/${listing.id}`}>Sign up</Link> or{" "}
+            <Link className="text-acid" href={`/login?next=/marketplace/${listing.id}`}>log in</Link> to buy.
           </p>
         ) : isOwn ? (
           <p className="mt-4 text-sm text-mid">This is your listing.</p>
@@ -66,7 +67,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           <p className="mt-4 text-sm text-mid">No payment method is set up for this listing yet.</p>
         ) : (
           <div className="mt-4">
-            <ActionForm action={buyAction} submitLabel="Continue to payment">
+            <CheckoutForm action={buyAction}>
               <input type="hidden" name="listingId" value={listing.id} />
               {listing.kind === "seat" ? (
                 <p className="font-mono text-2xl">{formatCents(listing.seatPriceCents)}</p>
@@ -76,6 +77,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                   <input className="input" name="amountUsd" type="number" step="1" min={listing.minPurchaseCents / 100} max={500} defaultValue={Math.max(5, listing.minPurchaseCents / 100)} />
                 </label>
               )}
+              {listing.kind === "seat" && <label className="block"><span className="label">Email for your seat invitation</span><input name="deliveryEmail" className="input" type="email" required maxLength={254} /><span className="mt-1 block text-xs text-low">Shared privately with this provider so they can invite you.</span></label>}
               <label className="block">
                 <span className="label">Pay with</span>
                 <select className="input" name="method" defaultValue={methods[0] ?? "demo"}>
@@ -85,12 +87,13 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                   {env.DEMO_MODE && <option value="demo">Demo payment (no money moves)</option>}
                 </select>
               </label>
+              <p className="text-xs text-mid">{listing.kind !== "seat" && "Credit expires 30 days after activation. "}Bank and payment-app transfers require manual confirmation before access is issued. Providers can change limits or end access.</p>
               <p className="text-xs text-low">
                 {listing.providerId
                   ? `You pay the provider directly. ${feePercent()} goes directly to the Shareference platform. Nobody in between holds your money.`
                   : "You pay Shareference directly for pool credit."}
               </p>
-            </ActionForm>
+            </CheckoutForm>
           </div>
         )}
       </aside>

@@ -2,6 +2,8 @@ import "server-only";
 import crypto from "node:crypto";
 import type { Hash } from "viem";
 import { db, now, tx } from "./db";
+import { darkbloomEnabled } from "./integrations/darkbloom";
+import { tinfoilEnabled } from "./integrations/tinfoil";
 import { env } from "./env";
 import { newId } from "./crypto";
 import { createGrantFromPurchase } from "./grants";
@@ -47,6 +49,7 @@ export interface Payment {
   buyerMarkedAt: number | null;
   grantId: string | null;
   createdAt: number;
+  deliveryEmail: string | null;
 }
 
 interface PaymentRow {
@@ -65,6 +68,9 @@ interface PaymentRow {
   buyer_marked_at: number | null;
   grant_id: string | null;
   created_at: number;
+  listing_snapshot?: string | null;
+  payment_legs?: string | null;
+  delivery_email?: string | null;
 }
 
 function toPayment(r: PaymentRow): Payment {
@@ -84,6 +90,7 @@ function toPayment(r: PaymentRow): Payment {
     buyerMarkedAt: r.buyer_marked_at,
     grantId: r.grant_id,
     createdAt: r.created_at,
+    deliveryEmail: r.delivery_email ?? null,
   };
 }
 
@@ -103,11 +110,22 @@ function handleFor(methods: PayoutMethods, method: PayMethod): string | undefine
   return methods[method];
 }
 
+/** Methods the platform can take its fee with. Providers can only be paid through these. */
+export function acceptedMethods(): PayMethod[] {
+  const platform = platformPayoutMethods();
+  return PAY_METHODS.filter((m) => (env.PLATFORM_FEE_BPS === 0 || handleFor(platform, m)) && (m !== "usdc" || env.NODE_ENV !== "production" || env.USDC_NETWORK === "base"));
+}
+
+/** True when the provider has at least one handle buyers can actually pay. */
+export function canReceivePayments(methods: PayoutMethods): boolean {
+  return acceptedMethods().some((m) => handleFor(methods, m));
+}
+
 /** Methods a buyer can use for this listing: both provider AND platform must accept it. */
 export async function availableMethods(listing: Listing): Promise<PayMethod[]> {
   const platform = platformPayoutMethods();
   const provider = listing.providerId ? ((await getUserById(listing.providerId))?.payoutMethods ?? {}) : platform;
-  return PAY_METHODS.filter((m) => handleFor(platform, m) && handleFor(provider, m));
+  return acceptedMethods().filter((m) => (listing.providerId || handleFor(platform, m)) && handleFor(provider, m));
 }
 
 export interface PayLeg {
@@ -122,6 +140,11 @@ export interface PayLeg {
 /** What the buyer must send, to whom. Only shown to the buyer of this order. */
 export async function paymentLegs(payment: Payment): Promise<PayLeg[]> {
   if (payment.method === "demo") return [];
+  const stored = await db.get<{ payment_legs: string | null }>("SELECT payment_legs FROM payments WHERE id = ?", [payment.id]);
+  if (stored?.payment_legs) {
+    const legs = JSON.parse(stored.payment_legs) as PayLeg[];
+    return legs.map((leg) => ({ ...leg, confirmed: leg.recipient === "provider" ? payment.providerConfirmedAt !== null : payment.feeConfirmedAt !== null }));
+  }
   const method = payment.method;
   const platform = platformPayoutMethods();
   const legs: PayLeg[] = [];
@@ -137,7 +160,7 @@ export async function paymentLegs(payment: Payment): Promise<PayLeg[]> {
       confirmed: payment.providerConfirmedAt !== null,
     });
   }
-  legs.push({
+  if (payment.feeCents > 0) legs.push({
     recipient: "platform",
     label: payment.providerId ? "Shareference platform fee" : "Shareference",
     handle: handleFor(platform, method) ?? "",
@@ -161,7 +184,18 @@ export function purchaseAmountCents(listing: Listing, requestedCents: number): n
 
 export type CreateOrderResult = { ok: true; paymentId: string } | { ok: false; message: string };
 
-export async function createOrder(listing: Listing, buyer: User, requestedCents: number, method: PayMethod | "demo"): Promise<CreateOrderResult> {
+export async function createOrder(listing: Listing, buyer: User, requestedCents: number, method: PayMethod | "demo", options: { checkoutKey?: string; deliveryEmail?: string } = {}): Promise<CreateOrderResult> {
+  if (!Number.isSafeInteger(requestedCents) || requestedCents < 0 || requestedCents > 50_000) return { ok: false, message: "Choose an amount up to $500." };
+  if (options.checkoutKey && !/^[a-f0-9-]{36}$/i.test(options.checkoutKey)) return { ok: false, message: "Please reload checkout and try again." };
+  if (options.checkoutKey) {
+    const existing = await db.get<{ id: string }>("SELECT id FROM payments WHERE buyer_id = ? AND checkout_key = ?", [buyer.id, options.checkoutKey]);
+    if (existing) return { ok: true, paymentId: existing.id };
+  }
+  const latest = await getListing(listing.id);
+  if (!latest) return { ok: false, message: "This listing is no longer available." };
+  listing = latest;
+  if (listing.kind === "pool" && !env.DEMO_MODE && !darkbloomEnabled() && !tinfoilEnabled()) return { ok: false, message: "Pool chat is being connected. Please choose a provider listing." };
+  if (listing.kind === "seat" && (!options.deliveryEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(options.deliveryEmail) || options.deliveryEmail.length > 254)) return { ok: false, message: "Enter the email to invite to the team seat." };
   if (listing.status !== "active") return { ok: false, message: "This listing is not available." };
   if (listing.providerId === buyer.id) return { ok: false, message: "You can't buy your own listing." };
   if (method === "demo" && !env.DEMO_MODE) return { ok: false, message: "Demo payments are disabled." };
@@ -171,13 +205,16 @@ export async function createOrder(listing: Listing, buyer: User, requestedCents:
   const gross = purchaseAmountCents(listing, requestedCents);
   const split = splitPayment(gross, listing.providerId === null);
   const id = newId("pay");
+  const initial: Payment = { id, reference: newReference(), listingId: listing.id, buyerId: buyer.id, providerId: listing.providerId, ...split, method, status: "awaiting_payment", providerConfirmedAt: null, feeConfirmedAt: null, buyerMarkedAt: null, grantId: null, createdAt: now(), deliveryEmail: options.deliveryEmail ?? null };
+  const legs = await paymentLegs(initial);
   await db.run(
-    `INSERT INTO payments (id, reference, listing_id, buyer_id, provider_id, gross_cents, fee_cents, provider_cents, method, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_payment', ?)`,
-    [id, newReference(), listing.id, buyer.id, listing.providerId, split.grossCents, split.feeCents, split.providerCents, method, now()],
+    `INSERT INTO payments (id, reference, listing_id, buyer_id, provider_id, gross_cents, fee_cents, provider_cents, method, status, created_at, listing_snapshot, payment_legs, checkout_key, delivery_email)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?, ?, ?, ?) ON CONFLICT (buyer_id, checkout_key) DO NOTHING`,
+    [id, initial.reference, listing.id, buyer.id, listing.providerId, split.grossCents, split.feeCents, split.providerCents, method, initial.createdAt, JSON.stringify(listing), JSON.stringify(legs), options.checkoutKey ?? null, options.deliveryEmail ?? null],
   );
-  if (method === "demo") await completeIfReady(id, { forceDemo: true });
-  return { ok: true, paymentId: id };
+  const savedId = options.checkoutKey ? (await db.get<{ id: string }>("SELECT id FROM payments WHERE buyer_id = ? AND checkout_key = ?", [buyer.id, options.checkoutKey]))?.id ?? id : id;
+  if (method === "demo") await completeIfReady(savedId, { forceDemo: true });
+  return { ok: true, paymentId: savedId };
 }
 
 export async function getPayment(id: string): Promise<Payment | null> {
@@ -229,8 +266,8 @@ export async function markSent(paymentId: string, buyerId: string): Promise<bool
 
 export async function cancelOrder(paymentId: string, buyerId: string): Promise<boolean> {
   const changes = await db.run(
-    `UPDATE payments SET status = 'canceled' WHERE id = ? AND buyer_id = ? AND status IN ('awaiting_payment','buyer_marked_sent')
-     AND provider_confirmed_at IS NULL AND fee_confirmed_at IS NULL`,
+    `UPDATE payments SET status = 'canceled' WHERE id = ? AND buyer_id = ? AND status = 'awaiting_payment'
+     AND buyer_marked_at IS NULL AND provider_confirmed_at IS NULL AND fee_confirmed_at IS NULL`,
     [paymentId, buyerId],
   );
   return changes > 0;
@@ -246,8 +283,8 @@ export async function confirmProviderReceipt(paymentId: string, providerId: stri
   if (changes > 0) {
     const p = await getPayment(paymentId);
     await agentLog("finance", "provider confirmed", `${await aliasOf(providerId)} confirmed receipt for ${p?.reference ?? paymentId}.`);
-    await completeIfReady(paymentId);
   }
+  await completeIfReady(paymentId);
   return changes > 0;
 }
 
@@ -261,28 +298,30 @@ export async function confirmPlatformReceipt(paymentId: string, admin: User): Pr
   if (changes > 0) {
     const p = await getPayment(paymentId);
     await agentLog("finance", "fee confirmed", `Platform fee confirmed for ${p?.reference ?? paymentId}.`);
-    await completeIfReady(paymentId);
   }
+  await completeIfReady(paymentId);
   return changes > 0;
 }
 
 async function completeIfReady(paymentId: string, opts: { forceDemo?: boolean } = {}): Promise<void> {
-  const p = await getPayment(paymentId);
-  if (!p || p.status === "completed" || p.status === "canceled") return;
-  const providerOk = !p.providerId || p.providerCents === 0 || p.providerConfirmedAt !== null;
-  const feeOk = p.feeCents === 0 || p.feeConfirmedAt !== null;
-  if (!opts.forceDemo && !(providerOk && feeOk)) return;
-  const listing = await getListing(p.listingId);
-  if (!listing) return;
-
-  const issued = await tx(async (t) => {
-    // Claiming the row first makes completion idempotent under concurrent confirmations.
-    const claimed = await t.run("UPDATE payments SET status = 'completed' WHERE id = ? AND status != 'completed'", [paymentId]);
-    if (claimed === 0) return false;
+  const context = await tx(async (t) => {
+    const row = await t.get<PaymentRow>("SELECT * FROM payments WHERE id = ? FOR UPDATE", [paymentId]);
+    if (!row || row.status === "completed" || row.status === "canceled") return null;
+    const p = toPayment(row);
+    const providerOk = !p.providerId || p.providerCents === 0 || p.providerConfirmedAt !== null;
+    const feeOk = p.feeCents === 0 || p.feeConfirmedAt !== null;
+    const demo = opts.forceDemo && p.method === "demo" && env.DEMO_MODE;
+    if (!demo && !(providerOk && feeOk)) return null;
+    const listing = row.listing_snapshot ? JSON.parse(row.listing_snapshot) as Listing : await getListing(p.listingId);
+    if (!listing) throw new Error("Order listing is missing");
     const grantId = await createGrantFromPurchase(listing, p.buyerId, p.grossCents, t);
-    await t.run("UPDATE payments SET grant_id = ? WHERE id = ?", [grantId, paymentId]);
-    return true;
+    await t.run("UPDATE grants SET delivery_email = ? WHERE id = ?", [p.deliveryEmail, grantId]);
+    await t.run("UPDATE payments SET status = 'completed', grant_id = ? WHERE id = ?", [grantId, paymentId]);
+    return { p, listing };
   });
+  if (!context) return;
+  const { p, listing } = context;
+  const issued = true;
   if (!issued) return;
 
   const [buyerAlias, providerAlias] = await Promise.all([aliasOf(p.buyerId), aliasOf(p.providerId)]);
@@ -322,6 +361,8 @@ export async function submitUsdcPayment(paymentId: string, buyerId: string, paye
   const ts = now();
   try {
     await tx(async (t) => {
+      const locked = await t.get<{ status: string }>("SELECT status FROM payments WHERE id = ? FOR UPDATE", [p.id]);
+      if (!locked || locked.status === "canceled") throw new Error("Order was canceled");
       for (const h of hashes) {
         await t.run("INSERT INTO used_tx (tx_hash, payment_id, created_at) VALUES (?, ?, ?)", [h.toLowerCase(), p.id, ts]);
       }

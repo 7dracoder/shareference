@@ -25,6 +25,7 @@ export interface Grant {
   expiresAt: number | null;
   status: GrantStatus;
   createdAt: number;
+  deliveryEmail: string | null;
 }
 
 interface GrantRow {
@@ -44,10 +45,11 @@ interface GrantRow {
   expires_at: number | null;
   status: GrantStatus;
   created_at: number;
+  delivery_email: string | null;
 }
 
 const COLUMNS =
-  "id, listing_id, buyer_id, provider_id, key_prefix, features, models, budget_micros, spent_micros, max_rpm, max_tokens_per_request, privacy_floor, starts_at, expires_at, status, created_at";
+  "id, listing_id, buyer_id, provider_id, key_prefix, features, models, budget_micros, spent_micros, max_rpm, max_tokens_per_request, privacy_floor, starts_at, expires_at, status, created_at, delivery_email";
 
 function toGrant(row: GrantRow): Grant {
   return {
@@ -67,6 +69,7 @@ function toGrant(row: GrantRow): Grant {
     expiresAt: row.expires_at,
     status: row.status,
     createdAt: row.created_at,
+    deliveryEmail: row.delivery_email,
   };
 }
 
@@ -161,7 +164,11 @@ export async function updateLimits(grantId: string, actorId: string, update: Lim
   const grant = await getGrant(grantId);
   if (!grant) return false;
   const isOwner = grant.providerId ? grant.providerId === actorId : grant.buyerId === actorId;
-  if (!isOwner) return false;
+  if (!isOwner || grant.status !== "active") return false;
+  const listing = await import("./listings").then((m) => m.getListing(grant.listingId));
+  if (!listing || update.maxRpm > listing.maxRpm || update.maxTokensPerRequest > listing.maxTokensPerRequest) return false;
+  const ceiling = grant.createdAt + DEFAULT_KEY_TTL_MS;
+  if (listing.kind !== "seat" && (update.expiresAt === null || update.expiresAt > ceiling || update.expiresAt <= now())) return false;
   await db.run("UPDATE grants SET max_rpm = ?, max_tokens_per_request = ?, privacy_floor = ?, expires_at = ? WHERE id = ?", [
     update.maxRpm,
     update.maxTokensPerRequest,
@@ -213,6 +220,7 @@ export async function sweepExpired(): Promise<void> {
 
 export interface UsageRecord {
   grantId: string;
+  reservationId?: string;
   endpoint: string;
   backend: string;
   tier: string;
@@ -228,6 +236,16 @@ export interface UsageRecord {
 /** Writes metering metadata and debits the budget atomically. Never stores content. */
 export async function recordUsage(rec: UsageRecord): Promise<void> {
   await tx(async (t) => {
+    // Lock in the same order as reserveBudget. Settlement is idempotent.
+    await t.get("SELECT id FROM grants WHERE id = ? FOR UPDATE", [rec.grantId]);
+    let charged = Math.max(0, Math.ceil(rec.costMicros));
+    if (rec.reservationId) {
+      const hold = await t.get<{ amount_micros: number }>("DELETE FROM usage_reservations WHERE id = ? AND grant_id = ? RETURNING amount_micros", [rec.reservationId, rec.grantId]);
+      if (!hold) return;
+      charged = Math.min(charged, hold.amount_micros);
+    } else if (charged > 0) {
+      throw new Error("Paid usage requires a budget reservation");
+    }
     await t.run(
       `INSERT INTO usage_events (id, grant_id, endpoint, backend, tier, model, prompt_tokens, completion_tokens, cost_micros, latency_ms, outcome, reason, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -240,19 +258,19 @@ export async function recordUsage(rec: UsageRecord): Promise<void> {
         rec.model,
         rec.promptTokens,
         rec.completionTokens,
-        rec.costMicros,
+        charged,
         rec.latencyMs,
         rec.outcome,
         rec.reason ?? null,
         now(),
       ],
     );
-    if (rec.costMicros > 0) {
+    if (charged > 0) {
       await t.run(
         `UPDATE grants SET spent_micros = spent_micros + ?,
-           status = CASE WHEN spent_micros + ? >= budget_micros THEN 'exhausted' ELSE status END
+           status = CASE WHEN status = 'active' AND spent_micros + ? >= budget_micros THEN 'exhausted' ELSE status END
          WHERE id = ?`,
-        [rec.costMicros, rec.costMicros, rec.grantId],
+        [charged, charged, rec.grantId],
       );
     }
   });

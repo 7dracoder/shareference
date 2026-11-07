@@ -29,7 +29,7 @@ export async function ledgerInsights(): Promise<Insight[]> {
       [since, since],
     ),
     db.get<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM grants WHERE status = 'active' AND budget_micros > 0 AND spent_micros >= budget_micros * ?",
+      "SELECT COUNT(*) AS n FROM grants WHERE status = 'active' AND budget_micros > 0 AND spent_micros >= budget_micros * ?::float8",
       [LOW_BUDGET_RATIO],
     ),
     db.all<{ reason: string; n: number }>(

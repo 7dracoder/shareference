@@ -5,7 +5,7 @@ import { logger } from "./logger";
 /**
  * Fixed-window counter stored in Postgres, so limits hold across serverless
  * instances. Returns true when the call is allowed.
- * Fails open on database errors, so a limiter outage never takes the API down.
+ * Fails closed on database errors so a limiter outage cannot bypass provider limits.
  */
 export async function hit(bucket: string, max: number, windowMs: number): Promise<boolean> {
   const windowStart = Math.floor(Date.now() / windowMs) * windowMs;
@@ -22,6 +22,6 @@ export async function hit(bucket: string, max: number, windowMs: number): Promis
     return (row?.hits ?? 0) <= max;
   } catch (error: unknown) {
     logger.warn("rate limiter unavailable", { error: String(error), bucket });
-    return true;
+    return false;
   }
 }

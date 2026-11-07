@@ -13,11 +13,11 @@ const PII_THRESHOLD = 0.5;
 const PII_MAX_CHARS = 2000;
 
 export function sieEnabled(): boolean {
-  return Boolean(env.SIE_BASE_URL);
+  return Boolean(env.SIE_BASE_URL && env.SIE_API_KEY);
 }
 
 function base(): string {
-  return `${(env.SIE_BASE_URL ?? "").replace(/\/$/, "")}/v1`;
+  return `${(env.SIE_BASE_URL ?? "").replace(/\/$/, "").replace(/\/v1$/, "")}/v1`;
 }
 
 function headers(): Record<string, string> {
@@ -80,6 +80,7 @@ export interface PiiScan {
  * processed in memory only and never stored.
  */
 export async function detectPii(text: string): Promise<PiiScan> {
+  if (text.length > PII_MAX_CHARS) return { found: false, labels: [], checked: false };
   if (!sieEnabled() || text.trim() === "") return { found: false, labels: [], checked: false };
   try {
     const result = (await post(

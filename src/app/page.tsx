@@ -1,103 +1,28 @@
 import Link from "next/link";
-import { TIER_INFO, TIERS, feePercent } from "@/lib/pricing";
 
 const STEPS = [
-  {
-    title: "Owners list access, not accounts",
-    body: "Share a team's inference credits, an API key, or a team-plan seat. Credentials are sealed in the vault and never shown to anyone.",
-  },
-  {
-    title: "Buyers get only the feature they need",
-    body: "Each purchase becomes a grant: specific endpoints and models, a budget, a rate limit, a time window. Everything else is blocked.",
-  },
-  {
-    title: "Owners keep control",
-    body: "Change limits or revoke any time. Owners see usage counts and cost, never the buyer's prompts or outputs.",
-  },
-  {
-    title: "Money goes straight to people",
-    body: `Buyers pay the provider directly by Zelle, Venmo, Cash App, PayPal or USDC. ${feePercent()} goes directly to the platform. Shareference never holds funds.`,
-  },
-];
-
-const SPONSORS = [
-  { name: "Tinfoil", role: "Verified tier: attested enclave inference; the app is built to run as a Tinfoil Container." },
-  { name: "Darkbloom", role: "Private tier: encrypted inference on hardware-attested Apple Silicon Macs." },
-  { name: "Superlinked SIE", role: "Fast tier + embeddings, rerank, and the PII detector that upgrades sensitive requests." },
-  { name: "cognee", role: "Shared agent memory with per-agent datasets: routing, finance, access, customers." },
+  ["Choose your access", "Find an API that fits your work. See the price, models, and limits before you buy."],
+  ["Pay, then connect", "Follow the payment instructions. Once payment is confirmed, your key appears in My access."],
+  ["Stay in control", "Track your remaining credit and usage in one place. End access whenever you need to."],
 ];
 
 export default function Home() {
-  return (
-    <div className="space-y-20">
-      <section className="pt-6">
-        <p className="kicker">LOCALHOST NYC · sovereign agentic organization</p>
-        <h1 className="mt-5 max-w-3xl font-mono text-4xl leading-tight tracking-tight sm:text-6xl">
-          Share AI and tool access <span className="text-acid">without sharing accounts.</span>
-        </h1>
-        <p className="mt-6 max-w-2xl text-lg text-mid">
-          Shareference is a private inference pool and a marketplace for limited, revocable access. One OpenAI-compatible key, routed
-          by cost and privacy. Owners set the limits; buyers get only what they paid for.
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/marketplace" className="btn">Browse the marketplace</Link>
-          <Link href="/provider" className="btn-ghost">Sell spare access</Link>
-          <Link href="/verify" className="btn-ghost">Verify the enclave</Link>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="kicker">Private inference pool</h2>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          {TIERS.map((t) => (
-            <div key={t} className="card">
-              <div className="flex items-baseline justify-between">
-                <h3 className="font-mono text-lg">{TIER_INFO[t].label}</h3>
-                <span className="pill">{TIER_INFO[t].backend}</span>
-              </div>
-              <p className="mt-3 text-sm text-mid">{TIER_INFO[t].guarantee}</p>
-              <p className="mt-4 font-mono text-sm text-acid">${(TIER_INFO[t].pricePer1kMicros / 1_000_000).toFixed(4)} / 1K tokens</p>
-            </div>
-          ))}
-        </div>
-        <p className="mt-4 text-sm text-low">
-          Requests are scanned for personal data on SIE first. If any is found, the request is upgraded to the verified tier
-          automatically. Fallbacks only go to a more private backend, never a less private one.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="kicker">How sharing works</h2>
-        <ol className="mt-5 grid gap-4 md:grid-cols-2">
-          {STEPS.map((s, i) => (
-            <li key={s.title} className="card">
-              <span className="font-mono text-2xl text-acid">0{i + 1}</span>
-              <h3 className="mt-3 font-medium">{s.title}</h3>
-              <p className="mt-2 text-sm text-mid">{s.body}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section>
-        <h2 className="kicker">Built on</h2>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          {SPONSORS.map((s) => (
-            <div key={s.name} className="card">
-              <h3 className="font-mono">{s.name}</h3>
-              <p className="mt-2 text-sm text-mid">{s.role}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="card">
-        <h2 className="kicker">Use it from any OpenAI client</h2>
-        <pre className="code mt-4">{`curl ${"$"}SHAREFERENCE_URL/api/v1/chat/completions \\
-  -H "Authorization: Bearer shr_..." \\
-  -H "x-shareference-tier: private" \\
-  -d '{"messages":[{"role":"user","content":"hello"}]}'`}</pre>
-      </section>
-    </div>
-  );
+  return <div className="space-y-16 pb-6">
+    <section className="grid items-center gap-12 py-8 lg:grid-cols-[1.3fr_1fr] sm:py-14">
+      <div>
+        <p className="kicker">AI access, made simple</p>
+        <h1 className="mt-5 max-w-2xl text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl">The access you need.<br /><span className="text-acid">The control you want.</span></h1>
+        <p className="mt-6 max-w-xl text-lg leading-relaxed text-mid">Get AI access with a budget you choose. Or provide access with limits you control. One place to manage it all.</p>
+        <div className="mt-8 flex flex-wrap gap-3"><Link href="/marketplace" className="btn">Get access <span aria-hidden>↗</span></Link><Link href="/provider" className="btn-ghost">Provide access</Link></div>
+        <p className="mt-5 text-xs text-low">Your own access key. Clear usage. No shared passwords.</p>
+      </div>
+      <div className="card space-y-7 p-7 sm:p-9">
+        <div className="flex items-center justify-between"><span className="text-sm font-medium">Two sides. One simple workspace.</span><span className="pill">Shareference</span></div>
+        <div className="border-b border-line pb-6"><p className="kicker">For getters</p><h2 className="mt-3 text-xl font-medium">Connect and get to work.</h2><p className="mt-2 text-sm leading-relaxed text-mid">Browse access, choose your credit, and use your key with an OpenAI-compatible app.</p></div>
+        <div><p className="kicker">For providers</p><h2 className="mt-3 text-xl font-medium">Share access on your terms.</h2><p className="mt-2 text-sm leading-relaxed text-mid">Connect your API, set a price, and manage each buyer’s limits from your dashboard.</p></div>
+      </div>
+    </section>
+    <section><h2 className="text-2xl font-semibold tracking-tight">From browsing to building.</h2><ol className="mt-6 grid gap-5 md:grid-cols-3">{STEPS.map(([title, text], i) => <li key={title} className="card"><span className="text-sm text-acid">0{i+1}</span><h3 className="mt-5 font-medium">{title}</h3><p className="mt-2 text-sm leading-relaxed text-mid">{text}</p></li>)}</ol></section>
+    <section className="flex flex-wrap items-center justify-between gap-5 rounded-xl border border-line px-6 py-7"><div><h2 className="font-medium">Know what happens to your data.</h2><p className="mt-2 text-sm text-mid">Understand routing, usage tracking, and who handles your requests.</p></div><Link className="btn-ghost" href="/verify">Read about privacy</Link></section>
+  </div>;
 }

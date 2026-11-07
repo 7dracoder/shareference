@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function NotFound() { return <div className="mx-auto max-w-lg space-y-4 py-10"><p className="kicker">Page not found</p><h1 className="text-3xl font-semibold">This page is no longer available.</h1><p className="text-mid">The link may be outdated, or this listing may have been paused.</p><Link href="/marketplace" className="btn">Browse access</Link></div>; }

@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { z } from "zod";
-import { db, now } from "./db";
+import { db, now, tx } from "./db";
 import { hashPassword, newId, verifyPassword } from "./crypto";
 import { env } from "./env";
 
@@ -98,10 +98,6 @@ export async function setPayoutMethods(userId: string, methods: PayoutMethods): 
   await db.run("UPDATE users SET payout_methods = ? WHERE id = ?", [JSON.stringify(clean), userId]);
 }
 
-export function hasPayoutMethod(methods: PayoutMethods): boolean {
-  return Boolean(methods.zelle || methods.venmo || methods.cashapp || methods.paypal || methods.usdc);
-}
-
 export async function aliasOf(userId: string | null): Promise<string> {
   if (!userId) return "Shareference";
   const row = await db.get<{ alias: string }>("SELECT alias FROM users WHERE id = ?", [userId]);
@@ -121,4 +117,27 @@ export async function aliasMap(ids: Array<string | null>): Promise<Map<string, s
 
 export function aliasFrom(map: Map<string, string>, id: string | null): string {
   return id ? (map.get(id) ?? "unknown") : "Shareference";
+}
+
+/** Link an existing account only using an email verified by Clerk. Never copy passwords. */
+export async function syncClerkUser(profile: { id: string; name: string; verifiedEmail?: string }): Promise<User> {
+  const email = profile.verifiedEmail?.trim().toLowerCase();
+  const id = await tx(async (t) => {
+    // Serialize first-login linking across concurrent navigation requests.
+    await t.get("SELECT pg_advisory_xact_lock(hashtext(?))", [email || profile.id]);
+    let row = await t.get<UserRow>("SELECT * FROM users WHERE clerk_id = ? FOR UPDATE", [profile.id]);
+    if (!row && email) row = await t.get<UserRow & { clerk_id: string | null }>("SELECT * FROM users WHERE email = ? AND clerk_id IS NULL FOR UPDATE", [email]);
+    if (row) {
+      await t.run("UPDATE users SET clerk_id = ?, name = ? WHERE id = ?", [profile.id, profile.name.slice(0, 80), row.id]);
+      return row.id;
+    }
+    const id = newId("usr");
+    await t.run("INSERT INTO users (id, clerk_id, email, name, alias, password_hash, created_at) VALUES (?, ?, ?, ?, ?, '', ?)",
+      [id, profile.id, email || `${profile.id}@users.clerk.invalid`, profile.name.slice(0, 80), randomAlias(), now()]);
+    return id;
+  });
+  const user = await getUserById(id);
+  if (!user) throw new Error("Could not load your profile");
+  // An old email or an unverified email must never grant operator privileges.
+  return { ...user, isAdmin: Boolean(email && env.ADMIN_EMAIL && email === env.ADMIN_EMAIL.toLowerCase()) };
 }

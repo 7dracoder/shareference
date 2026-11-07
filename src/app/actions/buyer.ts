@@ -13,7 +13,7 @@ import { num, str, type ActionState } from "@/lib/form";
 const MAX_PURCHASE_CENTS = 50_000;
 
 export async function buyAction(_prev: ActionState, form: FormData): Promise<ActionState> {
-  const user = await requireUser();
+  const user = await requireUser(`/marketplace/${encodeURIComponent(str(form, "listingId"))}`);
   const listing = await getListing(str(form, "listingId"));
   if (!listing) return { error: "Listing not found." };
   const method = str(form, "method");
@@ -23,7 +23,8 @@ export async function buyAction(_prev: ActionState, form: FormData): Promise<Act
   if (listing.kind !== "seat" && (cents < listing.minPurchaseCents || cents > MAX_PURCHASE_CENTS)) {
     return { error: `Amount must be between $${(listing.minPurchaseCents / 100).toFixed(2)} and $${MAX_PURCHASE_CENTS / 100}.` };
   }
-  const result = await createOrder(listing, user, cents, method as PayMethod | "demo");
+  if (!z.string().uuid().safeParse(str(form, "checkoutKey")).success) return { error: "Reload checkout and try again." };
+  const result = await createOrder(listing, user, cents, method as PayMethod | "demo", { checkoutKey: str(form, "checkoutKey"), deliveryEmail: str(form, "deliveryEmail") || undefined });
   if (!result.ok) return { error: result.message };
   redirect(`/orders/${result.paymentId}`);
 }

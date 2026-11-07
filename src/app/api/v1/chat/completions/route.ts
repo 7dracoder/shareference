@@ -2,8 +2,9 @@ import { after } from "next/server";
 import { authorize, checkOrBlock, openAiError, readJson } from "@/lib/api";
 import { parseTier, routeChat } from "@/lib/agents/router";
 import { BackendError, chatRequestSchema } from "@/lib/integrations/openai-compat";
+import { reserveBudget } from "@/lib/billing";
 import { recordUsage } from "@/lib/grants";
-import { costMicros } from "@/lib/pricing";
+import { costMicros, TIER_INFO } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 
 const ENDPOINT = "chat.completions";
@@ -31,7 +32,13 @@ export async function POST(req: Request): Promise<Response> {
   if (blocked) return blocked;
 
   // Cap generation at the owner's per-request limit even if the client didn't ask for one.
-  const capped = { ...request, max_tokens: Math.min(request.max_tokens ?? auth.grant.maxTokensPerRequest, auth.grant.maxTokensPerRequest) };
+  const { max_completion_tokens: completionLimit, ...rest } = request;
+  const capped = { ...rest, max_tokens: Math.min(request.max_tokens ?? completionLimit ?? auth.grant.maxTokensPerRequest, auth.grant.maxTokensPerRequest) };
+  const maxPrice = auth.listing.kind === "api_key" ? auth.listing.pricePer1kMicros : TIER_INFO.verified.pricePer1kMicros;
+  // UTF-8 bytes conservatively bound text token counts, including message framing.
+  const maxTokens = new TextEncoder().encode(JSON.stringify(capped)).length + capped.max_tokens + request.messages.length * 32;
+  const reservationId = await reserveBudget(auth.grant.id, costMicros(maxTokens, maxPrice));
+  if (!reservationId) return openAiError(402, "insufficient_credit", "Not enough available credit for this request. Reduce max_tokens or wait for current requests to finish.");
   const started = Date.now();
   try {
     // Pool callers pick a tier with the x-shareference-tier header or model "shareference-<tier>".
@@ -40,11 +47,12 @@ export async function POST(req: Request): Promise<Response> {
     const routed = await routeChat(auth.grant, auth.listing, capped, tierHint);
 
     // Meter once the (possibly streamed) response has fully finished.
-    after(async () => {
+    const settle = async () => {
       try {
         const usage = await routed.usage;
         await recordUsage({
           grantId: auth.grant.id,
+          reservationId,
           endpoint: ENDPOINT,
           backend: routed.backend,
           tier: routed.tier,
@@ -58,8 +66,11 @@ export async function POST(req: Request): Promise<Response> {
         });
       } catch (error: unknown) {
         logger.error("usage metering failed", { error: String(error), grant: auth.grant.id });
+        if (!request.stream) throw error;
       }
-    });
+    };
+    if (request.stream) after(settle);
+    else await settle();
 
     const headers = new Headers(routed.response.headers);
     headers.set("x-shareference-backend", routed.backend);
@@ -70,6 +81,7 @@ export async function POST(req: Request): Promise<Response> {
     logger.warn("chat routing failed", { grant: auth.grant.id, status, error: String(error) });
     await recordUsage({
       grantId: auth.grant.id,
+      reservationId,
       endpoint: ENDPOINT,
       backend: "none",
       tier: "none",

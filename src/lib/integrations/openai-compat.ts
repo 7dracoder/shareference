@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const chatMessageSchema = z.object({
   role: z.enum(["system", "user", "assistant", "tool", "developer"]),
-  content: z.union([z.string(), z.array(z.unknown()), z.null()]),
+  content: z.union([z.string().max(100_000), z.null()]),
 }).passthrough();
 
 export const chatRequestSchema = z
@@ -111,25 +111,33 @@ export function meterSseStream(upstream: ReadableStream<Uint8Array>, promptEstim
     }
   };
 
-  const transform = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      controller.enqueue(chunk);
-      buffer += decoder.decode(chunk, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      lines.forEach(handleLine);
+  const reader = upstream.getReader();
+  let finished = false;
+  function finish() {
+    if (finished) return;
+    finished = true;
+    buffer += decoder.decode();
+    if (buffer) handleLine(buffer);
+    const r = reported as UsageLike | null;
+    resolveUsage({ promptTokens: r?.prompt_tokens ?? promptEstimate, completionTokens: r?.completion_tokens ?? Math.ceil(streamedChars / CHARS_PER_TOKEN) });
+  }
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) { finish(); controller.close(); return; }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        lines.forEach(handleLine);
+        // Bound a malformed upstream event; it cannot grow memory indefinitely.
+        if (buffer.length > 1_000_000) throw new Error("Upstream event is too large");
+        controller.enqueue(value);
+      } catch (error) { finish(); await reader.cancel().catch(() => {}); controller.error(error); }
     },
-    flush() {
-      if (buffer) handleLine(buffer);
-      const r = reported as UsageLike | null;
-      resolveUsage({
-        promptTokens: r?.prompt_tokens ?? promptEstimate,
-        completionTokens: r?.completion_tokens ?? Math.ceil(streamedChars / CHARS_PER_TOKEN),
-      });
-    },
+    async cancel(reason) { finish(); await reader.cancel(reason); },
   });
-
-  return { stream: upstream.pipeThrough(transform), usage };
+  return { stream, usage };
 }
 
 export const SSE_HEADERS: Record<string, string> = {
@@ -157,6 +165,7 @@ export async function callOpenAiCompatible(opts: CallOptions): Promise<BackendRe
   try {
     res = await fetch(`${opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
+      redirect: "error",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${opts.apiKey}` },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),

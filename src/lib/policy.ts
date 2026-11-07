@@ -2,7 +2,7 @@ import "server-only";
 
 /**
  * Policy registry: which services allow shared access, and how.
- * Shareference refuses listings that would break a vendor's terms.
+ * The registry controls supported integrations; it does not establish resale rights.
  * Review vendor terms before adding entries; this list is a starting point.
  */
 export type SharingRule = "api_org" | "team_seat" | "forbidden";
@@ -13,6 +13,8 @@ export interface ServicePolicy {
   rule: SharingRule;
   note: string;
   kinds: ReadonlyArray<"api_key" | "seat">;
+  /** Fixed OpenAI-compatible API address, so providers only paste their key. */
+  baseUrl?: string;
 }
 
 export const SERVICE_POLICIES: readonly ServicePolicy[] = [
@@ -20,28 +22,30 @@ export const SERVICE_POLICIES: readonly ServicePolicy[] = [
     id: "openai-compatible",
     name: "OpenAI-compatible inference API",
     rule: "api_org",
-    note: "Share inside your team or org. The key stays sealed in the vault; members get capped sub-keys.",
+    note: "Only provide access you are authorized to resell or share. Check your service agreement.",
     kinds: ["api_key"],
   },
   {
     id: "darkbloom",
     name: "Darkbloom credits",
     rule: "api_org",
-    note: "Share Darkbloom inference credits with capped sub-keys.",
+    note: "Provide Darkbloom access only if your service agreement permits it.",
     kinds: ["api_key"],
+    baseUrl: "https://api.darkbloom.dev/v1",
   },
   {
     id: "tinfoil",
     name: "Tinfoil inference",
     rule: "api_org",
-    note: "Share Tinfoil inference with capped sub-keys.",
+    note: "Provide Tinfoil access only if your service agreement permits it.",
     kinds: ["api_key"],
+    baseUrl: "https://inference.tinfoil.sh/v1",
   },
   {
     id: "canva-teams",
     name: "Canva Teams seat",
     rule: "team_seat",
-    note: "Team plan seats only. The owner assigns the seat in Canva's admin console; Shareference tracks time and reclaims it.",
+    note: "Team plan seats only. The owner assigns the seat in Canva's admin console; Shareference tracks time; you must manually remove the seat.",
     kinds: ["seat"],
   },
   {
